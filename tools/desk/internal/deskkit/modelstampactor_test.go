@@ -388,10 +388,11 @@ func TestReStampRemovals(t *testing.T) {
 // runner demanded" — a stamp that records no strength claim — so a re-stamp to `any` takes the
 // same outcome as an unstamped PR: proceed with a NOTICE that names the label. The below-floor
 // refusal is kept live by the rank order, and this test drives it the way the floor's own
-// rank test does (TestFloorTierRankKeepsTheBelowFloorBranchLive in modelfloor_test.go): a
+// rank test does (`-run TestFloorTierRank` in modelfloor_test.go, which pins the below-floor
+// branch live): a
 // synthetic rung the vocabulary does not carry neither meets the floor nor claims no strength,
 // so it lands on the refuse side of both questions, and a stamp naming it refuses end to end.
-func TestReStampRecoveryClearsWithoutWeakeningFloor(t *testing.T) {
+func TestReStampRecoveryKeepsTheFloor(t *testing.T) {
 	const disp = "the-dispatcher"
 	model := DispatchedModelPrefix + "example-model-1"
 	tier := DispatchedTierPrefix + "strong"
