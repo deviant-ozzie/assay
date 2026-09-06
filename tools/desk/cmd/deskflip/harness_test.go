@@ -192,11 +192,7 @@ func (s *stub) handle(t *testing.T) http.HandlerFunc {
 				w.WriteHeader(http.StatusInternalServerError)
 				return
 			}
-			if r.URL.Query().Get("page") != "1" {
-				enc([]map[string]any{})
-				return
-			}
-			enc(s.servedTimeline())
+			enc(s.servedTimelinePage(r.URL.Query().Get("page")))
 
 		case strings.HasSuffix(path, "/reviews"):
 			if r.URL.Query().Get("page") != "1" {
@@ -260,8 +256,9 @@ func (s *stub) servedPR() map[string]any {
 	if s.prReads > 1 && s.head2 != "" {
 		head = s.head2
 	}
-	labels := make([]map[string]any, 0, len(s.pr.Labels))
-	for _, l := range s.pr.Labels {
+	present := s.presentLabels()
+	labels := make([]map[string]any, 0, len(present))
+	for _, l := range present {
 		labels = append(labels, map[string]any{"name": l})
 	}
 	out := map[string]any{
@@ -322,18 +319,99 @@ func (s *stub) servedFilePage(pageStr string) []map[string]any {
 	return out
 }
 
-// servedTimeline renders s.labelEvents as the `labeled` timeline shape the floor reads. A nil
-// slice serves an empty array — a change with no labels, which the floor reads as UNATTESTED.
+// standingLabels replays s.labelEvents and returns the label names STILL standing — each name
+// whose last event is a `labeled`, in first-appearance order. It mirrors the real forge, where
+// a standing `labeled` event means the label IS on the PR, and the deskkit floor test's own
+// convenience (a label is present when its last event is a `labeled`).
+func (s *stub) standingLabels() []string {
+	standing := map[string]bool{}
+	for _, e := range s.labelEvents {
+		if e.Removed {
+			delete(standing, e.Name)
+			continue
+		}
+		standing[e.Name] = true
+	}
+	out := []string{}
+	seen := map[string]bool{}
+	for _, e := range s.labelEvents {
+		if standing[e.Name] && !seen[e.Name] {
+			seen[e.Name] = true
+			out = append(out, e.Name)
+		}
+	}
+	return out
+}
+
+// presentLabels is the authoritative PRESENT set the applier-aware floor reads: the labels
+// the fixture PR explicitly carries UNION the labels the timeline shows still standing. The
+// floor keys presence off this set (a dispatched-* label absent here reads as UNATTESTED), so
+// a fixture that set only the timeline events would otherwise flip a below-tier stamp.
+func (s *stub) presentLabels() []string {
+	out := make([]string, 0, len(s.pr.Labels))
+	seen := map[string]bool{}
+	for _, l := range s.pr.Labels {
+		if !seen[l] {
+			seen[l] = true
+			out = append(out, l)
+		}
+	}
+	for _, l := range s.standingLabels() {
+		if !seen[l] {
+			seen[l] = true
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+// servedTimeline renders s.labelEvents as the timeline shape the floor's applier-aware reader
+// takes: an APPLICATION is `labeled`, a Removed event is `unlabeled` — the same distinction
+// the real forge draws and the resolver filters on (only an application is an attestation). A
+// nil slice serves an empty array — a change with no labels, which the floor reads as
+// UNATTESTED.
 func (s *stub) servedTimeline() []map[string]any {
 	out := make([]map[string]any, 0, len(s.labelEvents))
 	for _, e := range s.labelEvents {
+		event := "labeled"
+		if e.Removed {
+			event = "unlabeled"
+		}
 		out = append(out, map[string]any{
-			"event": "labeled",
+			"event": event,
 			"label": map[string]any{"name": e.Name},
 			"actor": map[string]any{"login": e.AppliedBy},
 		})
 	}
 	return out
+}
+
+// timelinePageSize mirrors deskkit's forge per-page (per_page=100) for the timeline read. The
+// resolver walks pages until one comes back SHORT, so a fake that serves fewer than a full
+// page signals "last page" — which is exactly how a timeline that fits on one page returns
+// page 1 and nothing after, and a longer one forces the walk the repair-past-page-one case
+// pins. Kept in step with forge_github.go's forgeFilePerPage (unexported, so not referenced).
+const timelinePageSize = 100
+
+// servedTimelinePage renders ONE page of the label timeline, chunked the way the forge
+// paginates it. Reproducing the paging rather than one flat array is deliberate: a fake that
+// returned everything on page one would let a reader that never walks pass, the very defect
+// the beyond-first-page case exists to pin.
+func (s *stub) servedTimelinePage(pageStr string) []map[string]any {
+	all := s.servedTimeline()
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 1 {
+		page = 1
+	}
+	start := (page - 1) * timelinePageSize
+	if start >= len(all) {
+		return []map[string]any{}
+	}
+	end := start + timelinePageSize
+	if end > len(all) {
+		end = len(all)
+	}
+	return all[start:end]
 }
 
 // servedStatuses / servedCheckRuns split s.rollup by SHAPE: an entry with a Context is a

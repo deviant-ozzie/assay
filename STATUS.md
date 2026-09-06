@@ -11,21 +11,21 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Priority | Status | Briefs done | Last touched | Notes |
 |---|---|---|---|---|---|
-| [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 0/8 | 2026-09-05 |  |
-| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-05 |  |
-| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-09-05 |  |
-| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 2/9 | 2026-09-05 |  |
-| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 3/16 | 2026-09-05 |  |
-| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 1/8 | 2026-09-05 |  |
-| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 4/8 | 2026-09-05 |  |
-| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 0/11 | 2026-09-05 |  |
-| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 1/12 | 2026-09-05 |  |
-| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 2/6 | 2026-09-05 |  |
-| [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 4/6 | 2026-09-05 |  |
-| [quality](docs/streams/quality/README.md) | P2 | active | 15/16 | 2026-09-05 |  |
-| [spec-routing](docs/streams/spec-routing/README.md) | P2 | active | 1/1 | 2026-09-05 |  |
-| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 8/13 | 2026-09-05 |  |
-| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 1/6 | 2026-09-05 |  |
+| [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 0/8 | 2026-09-06 |  |
+| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-06 |  |
+| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-09-06 |  |
+| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 2/9 | 2026-09-06 |  |
+| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 3/16 | 2026-09-06 |  |
+| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 1/8 | 2026-09-06 |  |
+| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 4/8 | 2026-09-06 |  |
+| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 0/11 | 2026-09-06 |  |
+| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 1/12 | 2026-09-06 |  |
+| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 2/6 | 2026-09-06 |  |
+| [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 4/6 | 2026-09-06 |  |
+| [quality](docs/streams/quality/README.md) | P2 | active | 15/16 | 2026-09-06 |  |
+| [spec-routing](docs/streams/spec-routing/README.md) | P2 | active | 1/1 | 2026-09-06 |  |
+| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 8/13 | 2026-09-06 |  |
+| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 1/6 | 2026-09-06 |  |
 
 ## Next up
 
@@ -35,7 +35,6 @@ _Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: desk-tools. By 
 |---|---|---|---|
 | apps-installer | 01 — Role→App indirection — six roles on N Apps without symlinks [exec:strong] | 0 | 4500 |
 | apps-installer | 05 — `deskavatar` — deterministic per-adopter App avatars with a 20 px legibility proof | 0 | 3000 |
-| iso-9001 | 01 — Emit the tool-validation evidence pack as a release asset (7.1.5) [exec:strong] | 0 | 2500 |
 | apps-installer | 08 — Solo identity mode — spec + decision: the desk verbs on the operator's own token [exec:strong] | 0 | 2000 |
 | desk-tools | 08 — `deskgit push` / `deskgit fetch --as <role>` — authenticated transport from the role's token file [exec:strong] | 1 | 1000 |
 | desk-tools | 13 — `pr-monitor.sh` — a paced, per-repo head-sha / draft-state PR monitor shipped in the plugin tree | 1 | 1000 |
@@ -47,14 +46,14 @@ _Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: desk-tools. By 
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (40 desk-actionable of 42 total — 42 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (41 desk-actionable of 43 total — 43 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (40)
+### Desk-actionable (41)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -72,6 +71,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 05 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | windows-port | 00 | implemented | 3000 | 4 | — | — | — |
 | harness-portability | 06 [exec:strong] | implemented | 2500 | 3 | — | — | — |
+| iso-9001 | 01 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | windows-port | 01 | implemented | 2500 | 3 | — | — | — |
 | desk-supervision | 02 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desk-supervision | 06 | implemented | 1500 | 1 | — | — | — |
@@ -236,7 +236,7 @@ _None._
 
 ### iso-9001 (4 open)
 
-- 01 Emit the tool-validation evidence pack as a release asset (7.1.5) — todo (wave 0)
+- 01 Emit the tool-validation evidence pack as a release asset (7.1.5) — implemented (wave 0)
 - 03 A finding closes on a fired control — the effectiveness record (10.2) — todo (wave 1)
 - 04 Record the authorizing human in the release itself (8.6) — todo (wave 1)
 - 06 The auditor one-pager — what Assay is and is not — todo (wave 2)

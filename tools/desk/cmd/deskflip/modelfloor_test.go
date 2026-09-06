@@ -30,6 +30,10 @@ func captureStderr(t *testing.T, fn func()) string {
 	return string(b)
 }
 
+// foreignApplier is a login the fixture roster does NOT bind to the dispatcher role, so a
+// dispatched-* stamp it applies is one the floor must not trust.
+const foreignApplier = "not-the-dispatcher"
+
 // The model-capability floor's four named cases, wired through the verb (Verify row 1 +
 // rows 2/3/4). Each uses the fully-flippable greenPR so the ONLY variable is the dispatch
 // attestation on the PR's label timeline.
@@ -149,5 +153,116 @@ func TestModelFloorTimelineUnreadableIsUnverifiable(t *testing.T) {
 	}
 	if m := s.mutated(); len(m) != 0 {
 		t.Fatalf("mutation on an unverifiable tier read: %v", m)
+	}
+}
+
+// THE REPAIR PATH, end to end through the verb. A GitHub timeline is APPEND-ONLY: the
+// `labeled` event that recorded a foreign stamp is never removed. So the ONLY repair
+// available is for the dispatcher to REMOVE the labels and re-apply them under its own
+// identity. The applier-aware floor reads the STANDING applier of each label — its last
+// `labeled` event — so a genuine re-stamp lands as the standing applier and the PR flips,
+// while an earlier foreign `labeled` event no longer bricks it forever. (The resolver drops
+// the `unlabeled` events; the re-stamp's own `labeled` events are what carry the repair.)
+func TestModelFloorRestampedByDispatcherFlips(t *testing.T) {
+	s := newStub()
+	s.reviews = nil
+	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
+	d := dispatcherLogin(t)
+	model := deskkit.DispatchedModelPrefix + "opus-4.8"
+	tier := deskkit.DispatchedTierPrefix + "strong"
+	s.labelEvents = []deskkit.LabelEvent{
+		{Name: model, AppliedBy: foreignApplier}, // the foreign stamp
+		{Name: tier, AppliedBy: foreignApplier},
+		{Name: model, AppliedBy: d, Removed: true}, // the dispatcher un-stamps
+		{Name: tier, AppliedBy: d, Removed: true},
+		{Name: model, AppliedBy: d}, // and re-stamps as itself
+		{Name: tier, AppliedBy: d},
+	}
+
+	var rc int
+	out := captureStderr(t, func() { rc = run([]string{"7", "--repo", privateCIRepo}) })
+	if rc != deskkit.ExitOK {
+		t.Fatalf("re-stamped PR rc = %d, want 0 — an append-only timeline leaves no other repair:\n%s", rc, out)
+	}
+	if !s.flipped() {
+		t.Errorf("a dispatcher re-stamp did not reach the ready mutation:\n%s", out)
+	}
+}
+
+// A foreign stamp that is STILL STANDING is not laundered by the repair: only a genuine
+// re-stamp is honoured. Here the dispatcher stamped first, then a foreign login re-applied —
+// so the STANDING applier is foreign, and the flip must refuse naming it.
+func TestModelFloorForeignStampStillStandingRefused(t *testing.T) {
+	s := newStub()
+	s.reviews = nil
+	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
+	d := dispatcherLogin(t)
+	model := deskkit.DispatchedModelPrefix + "opus-4.8"
+	tier := deskkit.DispatchedTierPrefix + "strong"
+	s.labelEvents = []deskkit.LabelEvent{
+		{Name: model, AppliedBy: d}, // the dispatcher stamped first...
+		{Name: tier, AppliedBy: d},
+		{Name: model, AppliedBy: d, Removed: true},
+		{Name: tier, AppliedBy: d, Removed: true},
+		{Name: model, AppliedBy: foreignApplier}, // ...but a foreign login holds it now
+		{Name: tier, AppliedBy: foreignApplier},
+	}
+
+	var rc int
+	out := captureStderr(t, func() { rc = run([]string{"7", "--repo", privateCIRepo}) })
+	if rc != deskkit.ExitRefused {
+		t.Fatalf("standing foreign stamp rc = %d, want %d — an earlier dispatcher event must not vouch "+
+			"for a later foreign one:\n%s", rc, deskkit.ExitRefused, out)
+	}
+	if !strings.Contains(out, foreignApplier) {
+		t.Errorf("the refusal does not name the STANDING applier:\n%s", out)
+	}
+	if m := s.mutated(); len(m) != 0 {
+		t.Fatalf("a foreign-stamped PR was mutated: %v", m)
+	}
+}
+
+// The repair usually lands LATE in a busy PR's timeline — i.e. on a later page. The resolver
+// walks the timeline page by page, so a reader that stopped after page one would see only the
+// foreign stamp and never the re-stamp that fixed it. Page one is filled to the page boundary
+// with quiet unrelated label events (the foreign stamp among them); the dispatcher re-stamp
+// lives entirely on page two, so a flip proves the second page was read.
+func TestModelFloorReadsTimelineBeyondTheFirstPage(t *testing.T) {
+	s := newStub()
+	s.reviews = nil
+	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
+	d := dispatcherLogin(t)
+	model := deskkit.DispatchedModelPrefix + "opus-4.8"
+	tier := deskkit.DispatchedTierPrefix + "strong"
+
+	// Page one (exactly timelinePageSize events, so the resolver must fetch a second page):
+	// the standing foreign stamp plus quiet filler label events that the floor ignores.
+	events := []deskkit.LabelEvent{
+		{Name: model, AppliedBy: foreignApplier},
+		{Name: tier, AppliedBy: foreignApplier},
+	}
+	for i := len(events); i < timelinePageSize; i++ {
+		events = append(events, deskkit.LabelEvent{Name: "queue:example", AppliedBy: "someone"})
+	}
+	// Page two: the dispatcher un-stamps the foreign labels and re-applies them as itself.
+	// Only these events turn the refusal into a flip, and they exist only past page one.
+	events = append(events,
+		deskkit.LabelEvent{Name: model, AppliedBy: d, Removed: true},
+		deskkit.LabelEvent{Name: tier, AppliedBy: d, Removed: true},
+		deskkit.LabelEvent{Name: model, AppliedBy: d},
+		deskkit.LabelEvent{Name: tier, AppliedBy: d},
+	)
+	s.labelEvents = events
+
+	var rc int
+	out := captureStderr(t, func() { rc = run([]string{"7", "--repo", privateCIRepo}) })
+	if rc != deskkit.ExitOK {
+		t.Fatalf("paged timeline rc = %d, want 0 — page 2 of the timeline was not read:\n%s", rc, out)
+	}
+	if !s.flipped() {
+		t.Errorf("the re-stamp on page 2 did not reach the ready mutation:\n%s", out)
 	}
 }

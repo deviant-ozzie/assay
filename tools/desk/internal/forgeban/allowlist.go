@@ -91,9 +91,14 @@ var AllowedInvocations = []Allowance{
 	},
 	{
 		Key: "cmd/deskdispatch/dispatch.go::stepStamp::gh",
-		Reason: "TODO(forge-surface): `label create` + `pr edit --add-label`. BOTH now map to the enumerated " +
-			"ApplyLabels, so this row is no longer blocked on the op — it is blocked on identity: deskdispatch " +
-			"mints no token on any path, and both backends refuse a client without one.",
+		Reason: "TODO(forge-surface): mixed. The label WRITES (`label create`, `pr edit " +
+			"--add-label`/`--remove-label`) and the read of the PR's current labels now map to the " +
+			"enumerated ApplyLabels, which reconciles add/remove/remove-families in one op — so this row " +
+			"is no longer blocked on the label-write op. What is left is the re-stamp's read of the label " +
+			"TIMELINE (WHO last applied the stamp — GitHub timeline events; on GitLab that history lives in " +
+			"system notes), which has no enumerated op and needs a ListLabelEvents surface in its own brief, " +
+			"and identity: deskdispatch mints no token on any path, and both backends refuse a client " +
+			"without one.",
 	},
 	{
 		Key: "cmd/deskdisposition/exec.go::gh::gh",

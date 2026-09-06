@@ -9,7 +9,8 @@
   "result": [
     {
       "Name": "dispatched-tier:strong",
-      "AppliedBy": "desk-bot"
+      "AppliedBy": "desk-bot",
+      "Removed": false
     }
   ]
 }
