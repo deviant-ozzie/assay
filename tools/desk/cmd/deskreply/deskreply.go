@@ -114,9 +114,11 @@ func cmdReply(args []string) (err error) {
 	scanOverride := fs.String(deskkit.ScanOverrideFlag, "", "override a secret-scan refusal, stating why; writes an audit row (tool, body digest, reason, identity)")
 	workpad := fs.Bool("workpad", false, "upsert ONE workpad comment per PR instead of always posting a new reply — find the newest unresolved workpad comment authored by the worker identity and edit it in place, or create the first one")
 	dryRun := fs.Bool("dry-run", false, "with --workpad, report what would happen (WORKPAD: would edit #<id> / WORKPAD: would create) without posting or editing anything")
+	explain := fs.Bool("explain", false, "on a secret-scan refusal, also print a scan-explain line naming the rule id and line number (never the offending span)")
 	if perr := fs.Parse(args[2:]); perr != nil {
 		return deskkit.Refused("refused: bad flags: " + perr.Error())
 	}
+	defer func() { deskkit.MaybeExplain(os.Stderr, *explain, err) }()
 	if fs.NArg() != 0 {
 		return deskkit.Refused("refused: unexpected extra arguments after <owner/repo> <pr>")
 	}
