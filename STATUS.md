@@ -15,7 +15,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-06 |  |
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-09-06 |  |
 | [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 2/9 | 2026-09-06 |  |
-| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 3/16 | 2026-09-06 |  |
+| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 3/19 | 2026-09-06 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 1/8 | 2026-09-06 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 4/8 | 2026-09-06 |  |
 | [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 0/11 | 2026-09-06 |  |
@@ -29,7 +29,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 ## Next up
 
-_Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: desk-tools. By stream: desk-tools (1). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
+_Held by per-stream caps: 4 brief(s) across 1 stream(s) — top: desk-tools. By stream: desk-tools (4). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
@@ -172,7 +172,7 @@ _None._
 - 08 Objectives over transitions — measure an objective-style worker kit with skillbench — todo (wave 1)
 - 09 Per-push CI fan-out — trigger selection so a docs-only push stops paying for a Go build — implemented (wave 0)
 
-### desk-tools (13 open)
+### desk-tools (16 open)
 
 - 01 Binary channel — publish the `.assay-versions` contract, validate it, stamp desk-tools with its release tag — implemented (wave 1)
 - 02 Generalize — batch-fanout as the second drain-engine consumer — implemented (wave 1)
@@ -187,6 +187,9 @@ _None._
 - 14 bodycheck — three measured false-positive classes into the negative corpus, plus `--explain` — todo (wave 1)
 - 15 `deskdispatch --dry-run --worktree <path>` — render the prompt against an operator-supplied home — todo (wave 1)
 - 16 `deskevidence` — an Evidence block equivalent to one already standing is a no-op, not a second block — todo (wave 1)
+- 17 One trust bar for public-repo authors — `deskboard` classifies on the same predicate `deskpost` gates on — todo (wave 1)
+- 18 Public-repo write gate — an allowed-repos entry tagged `:public` authorizes outward writes, replacing the per-item `+1` reaction check — todo (wave 1)
+- 19 `verifyloop plan` fails safe on risk — any risk answer `yes` routes to ROUTE-HUMAN, and the Evidence-only lane says so — todo (wave 1)
 
 ### desktools-go-git (7 open)
 
@@ -354,4 +357,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**15** streams (**15** active, **0** paused) · **45/134** briefs done · completed initiatives: see `docs/archive/`
+**15** streams (**15** active, **0** paused) · **45/137** briefs done · completed initiatives: see `docs/archive/`
