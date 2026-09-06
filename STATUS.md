@@ -15,7 +15,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-06 |  |
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-09-06 |  |
 | [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 2/9 | 2026-09-06 |  |
-| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 3/19 | 2026-09-06 |  |
+| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 3/20 | 2026-09-06 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 1/8 | 2026-09-06 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 4/8 | 2026-09-06 |  |
 | [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 0/11 | 2026-09-06 |  |
@@ -45,14 +45,14 @@ _Held by per-stream caps: 4 brief(s) across 1 stream(s) — top: desk-tools. By 
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (41 desk-actionable of 45 total — 45 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (42 desk-actionable of 46 total — 46 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (41)
+### Desk-actionable (42)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -87,6 +87,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-tools | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 12 | implemented | 1000 | 0 | — | — | — |
+| desk-tools | 20 | implemented | 1000 | 0 | — | — | — |
 | forge-gitlab | 08 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 07 | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -174,7 +175,7 @@ _None._
 - 08 Objectives over transitions — measure an objective-style worker kit with skillbench — todo (wave 1)
 - 09 Per-push CI fan-out — trigger selection so a docs-only push stops paying for a Go build — implemented (wave 0)
 
-### desk-tools (16 open)
+### desk-tools (17 open)
 
 - 01 Binary channel — publish the `.assay-versions` contract, validate it, stamp desk-tools with its release tag — implemented (wave 1)
 - 02 Generalize — batch-fanout as the second drain-engine consumer — implemented (wave 1)
@@ -192,6 +193,7 @@ _None._
 - 17 One trust bar for public-repo authors — `deskboard` classifies on the same predicate `deskpost` gates on — todo (wave 1)
 - 18 Public-repo write gate — an allowed-repos entry tagged `:public` authorizes outward writes, replacing the per-item `+1` reaction check — todo (wave 1)
 - 19 `verifyloop plan` fails safe on risk — any risk answer `yes` routes to ROUTE-HUMAN, and the Evidence-only lane says so — todo (wave 1)
+- 20 Cross-repo triage/verify evidence binds to the remote — a sibling checkout must be cross-checked, not trusted as-is — implemented (wave 1)
 
 ### desktools-go-git (7 open)
 
@@ -360,4 +362,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**15** streams (**15** active, **0** paused) · **45/138** briefs done · completed initiatives: see `docs/archive/`
+**15** streams (**15** active, **0** paused) · **45/139** briefs done · completed initiatives: see `docs/archive/`
