@@ -14,7 +14,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 0/8 | 2026-09-06 |  |
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-06 |  |
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-09-06 |  |
-| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 2/9 | 2026-09-05 |  |
+| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 2/9 | 2026-09-06 |  |
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 3/16 | 2026-09-06 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 1/8 | 2026-09-06 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 4/8 | 2026-09-06 |  |
