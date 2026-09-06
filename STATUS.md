@@ -14,7 +14,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 0/8 | 2026-09-06 |  |
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-06 |  |
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-09-06 |  |
-| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 2/9 | 2026-09-06 |  |
+| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 2/9 | 2026-09-05 |  |
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 3/16 | 2026-09-06 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 1/8 | 2026-09-06 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 4/8 | 2026-09-06 |  |
@@ -36,7 +36,6 @@ _Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: desk-tools. By 
 | apps-installer | 01 — Role→App indirection — six roles on N Apps without symlinks [exec:strong] | 0 | 4500 |
 | apps-installer | 05 — `deskavatar` — deterministic per-adopter App avatars with a 20 px legibility proof | 0 | 3000 |
 | apps-installer | 08 — Solo identity mode — spec + decision: the desk verbs on the operator's own token [exec:strong] | 0 | 2000 |
-| desk-tools | 08 — `deskgit push` / `deskgit fetch --as <role>` — authenticated transport from the role's token file [exec:strong] | 1 | 1000 |
 | desk-tools | 13 — `pr-monitor.sh` — a paced, per-repo head-sha / draft-state PR monitor shipped in the plugin tree | 1 | 1000 |
 | desk-tools | 14 — bodycheck — three measured false-positive classes into the negative corpus, plus `--explain` [exec:strong] | 1 | 1000 |
 | desk-tools | 15 — `deskdispatch --dry-run --worktree <path>` — render the prompt against an operator-supplied home | 1 | 1000 |
