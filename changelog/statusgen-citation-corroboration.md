@@ -8,7 +8,11 @@
   Detection is anchored on names an adopter has declared human in `ASSAY_HUMAN_LOGIN_MAP`,
   so it hardcodes no name and stays inert when unconfigured; the corroboration read is a
   live, possibly cross-repo lookup of the cited artifact, which is why it lives on the
-  network-capable `--corroborate` verb rather than the offline `--lint` gate. Closes a
-  laundering surface one over from the register stamp: a fabricated human acceptance
-  written into a durable governance artifact (a runbook, a brief, a commit record) that no
-  human artifact stands behind. Logic in `statusgen/citationcorroborate.go`.
+  network-capable `--corroborate` verb rather than the offline `--lint` gate. A fetch that
+  cannot complete (network, token, rate-limit, transient 5xx) is reported `COULD-NOT-CHECK`
+  and does NOT fail the gate — an absence the check never observed is not rounded down to a
+  fabricated `MISSING`; an observed HTTP 404 (the cited artifact genuinely does not exist)
+  still reports `MISSING`, so a bogus ref stays fail-closed. Closes a laundering surface one
+  over from the register stamp: a fabricated human acceptance written into a durable
+  governance artifact (a runbook, a brief, a commit record) that no human artifact stands
+  behind. Logic in `statusgen/citationcorroborate.go`.

@@ -570,6 +570,12 @@ const (
 	verdictCorroborated verdict = iota
 	verdictMissing
 	verdictNoStamp
+	// verdictCitationUncheckable is the three-state middle: the instrument never
+	// observed the cited artifact (a transient/auth/rate-limit fetch failure), so
+	// it can neither confirm nor deny the citation. It is NOT rounded down to
+	// verdictMissing — an absence the check never observed must not be fabricated
+	// (clause 4 / clause 8). It does not fail the gate.
+	verdictCitationUncheckable
 )
 
 func (v verdict) String() string {
@@ -578,6 +584,8 @@ func (v verdict) String() string {
 		return "CORROBORATED"
 	case verdictMissing:
 		return "MISSING-CORROBORATION"
+	case verdictCitationUncheckable:
+		return "COULD-NOT-CHECK"
 	default:
 		return ""
 	}
@@ -868,6 +876,11 @@ func runCorroborate(prsArg string) int {
 					r.Citation.Name, r.Citation.Source, r.Evidence)
 			case verdictMissing:
 				fmt.Printf("citation of %s in %s MISSING-CORROBORATION — %s\n",
+					r.Citation.Name, r.Citation.Source, r.Evidence)
+			case verdictCitationUncheckable:
+				// Surfaced, never a gate failure: the cited artifact could not be
+				// read, so the check neither corroborates nor condemns the citation.
+				fmt.Printf("citation of %s in %s COULD-NOT-CHECK — %s\n",
 					r.Citation.Name, r.Citation.Source, r.Evidence)
 			}
 		}

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"os/exec"
 	"strings"
 	"testing"
 )
@@ -237,5 +239,64 @@ func TestCorroborateCitations_CrossRepoKey(t *testing.T) {
 	}
 	if res[0].Citation.citedKey("o/r") != "owner-x/repo-y#42" {
 		t.Errorf("citedKey = %q, want owner-x/repo-y#42", res[0].Citation.citedKey("o/r"))
+	}
+}
+
+func TestCorroborateCitations_FetchFailed_CouldNotCheck(t *testing.T) {
+	// The live fetch FAILED (network/auth/rate-limit): checkCitationCorroboration
+	// records the key with a NIL artifact. This must NOT be rounded down to a
+	// fabricated MISSING — the check never observed the artifact, so it can neither
+	// confirm nor deny. COULD-NOT-CHECK, and it does not fail the gate.
+	cit := citation{Name: "alex", Repo: "", Number: 1583, HasRef: true, Source: "docs/runbook.md"}
+	fetched := map[string]*citedArtifact{"o/r#1583": nil}
+	res := corroborateCitations([]citation{cit}, fetched, "o/r")
+	if res[0].Verdict != verdictCitationUncheckable {
+		t.Fatalf("a fetch failure must be could-not-check, not MISSING; got %+v", res[0])
+	}
+	if strings.Contains(res[0].Evidence, "no comment or review") ||
+		strings.Contains(res[0].Evidence, "no artifact behind it") {
+		t.Errorf("could-not-check must not assert an absence it never observed; got %q", res[0].Evidence)
+	}
+	if !strings.Contains(res[0].Evidence, "could not fetch") {
+		t.Errorf("evidence should name the fetch failure; got %q", res[0].Evidence)
+	}
+}
+
+func TestCorroborateCitations_FetchNeverAttempted_CouldNotCheck(t *testing.T) {
+	// A referenced citation whose key is ABSENT from the fetched map (no fetch was
+	// attempted) is fail-safe COULD-NOT-CHECK, never a fabricated MISSING.
+	cit := citation{Name: "alex", Repo: "", Number: 1583, HasRef: true, Source: "docs/runbook.md"}
+	res := corroborateCitations([]citation{cit}, map[string]*citedArtifact{}, "o/r")
+	if res[0].Verdict != verdictCitationUncheckable {
+		t.Fatalf("an unattempted fetch must be could-not-check; got %+v", res[0])
+	}
+}
+
+func TestCorroborateCitations_EmptyArtifact_StaysMissing(t *testing.T) {
+	// A genuine 404 / genuinely empty artifact arrives as a NON-nil empty struct
+	// (fetchCitedArtifact returns art, nil on an observed 404). An observed absence is
+	// a real MISSING — the fail-closed direction for a bogus ref is preserved.
+	cit := citation{Name: "alex", Repo: "", Number: 1583, HasRef: true, Source: "docs/runbook.md"}
+	fetched := map[string]*citedArtifact{"o/r#1583": {}}
+	res := corroborateCitations([]citation{cit}, fetched, "o/r")
+	if res[0].Verdict != verdictMissing {
+		t.Fatalf("an observed-empty artifact must stay MISSING; got %+v", res[0])
+	}
+}
+
+func TestGhErrIsNotFound(t *testing.T) {
+	// A 404 is an OBSERVED absence (bogus ref -> MISSING); every other failure is a
+	// could-not-check.
+	if !ghErrIsNotFound(&exec.ExitError{Stderr: []byte("gh: Not Found (HTTP 404)")}) {
+		t.Error("HTTP 404 stderr should be recognised as not-found")
+	}
+	if ghErrIsNotFound(&exec.ExitError{Stderr: []byte("gh: API rate limit exceeded (HTTP 403)")}) {
+		t.Error("a rate-limit (403) must NOT be treated as not-found")
+	}
+	if ghErrIsNotFound(&exec.ExitError{Stderr: []byte("dial tcp: connection refused")}) {
+		t.Error("a network failure must NOT be treated as not-found")
+	}
+	if ghErrIsNotFound(errors.New("some non-exit error")) {
+		t.Error("a non-ExitError must NOT be treated as not-found")
 	}
 }

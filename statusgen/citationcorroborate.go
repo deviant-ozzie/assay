@@ -2,7 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"regexp"
 	"sort"
@@ -305,6 +307,17 @@ type citationResult struct {
 // pre-fetched cited artifact for ≥1 comment/review by that login. fetched is keyed by
 // citedKey(prRepo). A citation with no reference (unlinked), or one whose cited
 // artifact carries no action by the named human, is MISSING-CORROBORATION.
+//
+// The fetched map distinguishes three states for a referenced citation, so a fetch
+// FAILURE is never rounded down to a fabricated absence:
+//
+//   - key present, artifact NON-nil  -> the artifact was read (a genuine 404 arrives
+//     here as a non-nil EMPTY artifact): authoredBy decides CORROBORATED vs MISSING;
+//   - key present, artifact nil       -> the live fetch FAILED (network/auth/rate-limit
+//     /transient 5xx): COULD-NOT-CHECK — the instrument observed nothing, so it
+//     condemns nothing;
+//   - key ABSENT                      -> the fetch was never attempted for this ref:
+//     likewise COULD-NOT-CHECK (fail-safe, never a fabricated MISSING).
 func corroborateCitations(cits []citation, fetched map[string]*citedArtifact, prRepo string) []citationResult {
 	var results []citationResult
 	for _, c := range cits {
@@ -326,7 +339,22 @@ func corroborateCitations(cits []citation, fetched map[string]*citedArtifact, pr
 			})
 			continue
 		}
-		art := fetched[c.citedKey(prRepo)]
+		art, present := fetched[c.citedKey(prRepo)]
+		if !present || art == nil {
+			// The cited artifact could not be fetched (transient/auth/rate-limit, or
+			// no fetch attempted). Do NOT emit MISSING: the check never observed the
+			// artifact, so it cannot assert the human failed to act on it. Demote to
+			// COULD-NOT-CHECK — fail-open for a fault the instrument never resolved,
+			// while a genuinely empty/404 artifact (a non-nil empty struct) still
+			// falls through to MISSING below.
+			results = append(results, citationResult{
+				Citation: c, Verdict: verdictCitationUncheckable, Login: login,
+				Evidence: fmt.Sprintf("could not fetch the cited %s (network, token, rate-limit "+
+					"or transient failure) — cannot confirm or deny the acceptance/ruling; re-run --corroborate",
+					c.citedKey(prRepo)),
+			})
+			continue
+		}
 		if ev, ok := art.authoredBy(login); ok {
 			results = append(results, citationResult{
 				Citation: c, Verdict: verdictCorroborated, Login: login, Evidence: ev,
@@ -381,40 +409,71 @@ func gatherCitations(root, diff string) []citation {
 	return dedupeCitations(cits)
 }
 
-// fetchCitedArtifact reads a cited issue/PR's comments and (if it is a PR) reviews
-// via the REST API. Both endpoints are tolerant: issues/N/comments serves issues and
-// PRs alike, and pulls/N/reviews 404s for a plain issue — which is fine, it just
-// contributes no reviews.
-func fetchCitedArtifact(repo string, number int) *citedArtifact {
+// ghErrIsNotFound reports whether a gh api failure was an HTTP 404 — the cited
+// artifact genuinely does not exist — as opposed to a transient/auth/rate-limit
+// failure. .Output() populates *exec.ExitError.Stderr (cmd.Stderr is nil here), where
+// gh writes "gh: Not Found (HTTP 404)". A 404 is an OBSERVED absence (a bogus ref); any
+// other failure is could-not-check.
+func ghErrIsNotFound(err error) bool {
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		s := strings.ToLower(string(ee.Stderr))
+		return strings.Contains(s, "http 404") || strings.Contains(s, "not found")
+	}
+	return false
+}
+
+// fetchCitedArtifact reads a cited issue/PR's comments and (if it is a PR) reviews via
+// the REST API. It returns a NON-nil error ONLY when the fetch could not be completed
+// (network, token, rate-limit, transient 5xx) — a state the caller must render as
+// COULD-NOT-CHECK, never as a fabricated absence. A genuine HTTP 404 is NOT an error:
+// it means the cited artifact does not exist, which is a real MISSING, so it returns a
+// non-nil EMPTY artifact and nil error. The reviews endpoint 404s for a plain issue —
+// expected, and it just contributes no reviews.
+func fetchCitedArtifact(repo string, number int) (*citedArtifact, error) {
 	art := &citedArtifact{}
-	// Issue comments (covers both issues and PRs).
-	if out, err := exec.Command("gh", "api", "--paginate", "--slurp",
-		fmt.Sprintf("repos/%s/issues/%d/comments", repo, number)).Output(); err == nil {
-		var pages [][]struct {
-			User    ghAuthor `json:"user"`
-			Body    string   `json:"body"`
-			HTMLURL string   `json:"html_url"`
+	// Issue comments (covers both issues and PRs). This endpoint is also the
+	// existence probe: a 404 here means the cited artifact is absent (a bogus ref).
+	out, err := exec.Command("gh", "api", "--paginate", "--slurp",
+		fmt.Sprintf("repos/%s/issues/%d/comments", repo, number)).Output()
+	if err != nil {
+		if ghErrIsNotFound(err) {
+			return art, nil // observed 404: empty artifact -> MISSING downstream
 		}
-		if json.Unmarshal(out, &pages) == nil {
-			for _, p := range pages {
-				for _, c := range p {
-					art.Comments = append(art.Comments, ghComment{
-						Author: c.User, Body: c.Body, URL: c.HTMLURL,
-					})
-				}
+		return nil, fmt.Errorf("gh api issues/%d/comments: %w", number, err)
+	}
+	var cpages [][]struct {
+		User    ghAuthor `json:"user"`
+		Body    string   `json:"body"`
+		HTMLURL string   `json:"html_url"`
+	}
+	if json.Unmarshal(out, &cpages) == nil {
+		for _, p := range cpages {
+			for _, c := range p {
+				art.Comments = append(art.Comments, ghComment{
+					Author: c.User, Body: c.Body, URL: c.HTMLURL,
+				})
 			}
 		}
 	}
-	// PR reviews (empty/404 for a plain issue).
-	if out, err := exec.Command("gh", "api", "--paginate", "--slurp",
-		fmt.Sprintf("repos/%s/pulls/%d/reviews", repo, number)).Output(); err == nil {
-		var pages [][]struct {
+	// PR reviews (a 404 here is EXPECTED for a plain issue — no reviews, not a
+	// failure). Any OTHER error means we could not read the reviews, so we cannot
+	// rule out a corroborating APPROVED review: surface it as a fetch failure rather
+	// than reporting a possibly-false absence.
+	out, err = exec.Command("gh", "api", "--paginate", "--slurp",
+		fmt.Sprintf("repos/%s/pulls/%d/reviews", repo, number)).Output()
+	if err != nil {
+		if !ghErrIsNotFound(err) {
+			return nil, fmt.Errorf("gh api pulls/%d/reviews: %w", number, err)
+		}
+	} else {
+		var rpages [][]struct {
 			User  ghAuthor `json:"user"`
 			Body  string   `json:"body"`
 			State string   `json:"state"`
 		}
-		if json.Unmarshal(out, &pages) == nil {
-			for _, p := range pages {
+		if json.Unmarshal(out, &rpages) == nil {
+			for _, p := range rpages {
 				for _, r := range p {
 					art.Reviews = append(art.Reviews, ghReview{
 						Author: r.User, Body: r.Body, State: r.State,
@@ -423,7 +482,7 @@ func fetchCitedArtifact(repo string, number int) *citedArtifact {
 			}
 		}
 	}
-	return art
+	return art, nil
 }
 
 // checkCitationCorroboration runs the full citation pipeline for one PR: gather
@@ -447,7 +506,17 @@ func checkCitationCorroboration(root, repo, diff string, pr int) []citationResul
 		if citedRepo == "" {
 			citedRepo = repo
 		}
-		fetched[key] = fetchCitedArtifact(citedRepo, c.Number)
+		art, err := fetchCitedArtifact(citedRepo, c.Number)
+		if err != nil {
+			// Record the failure as a nil artifact under the key so corroborateCitations
+			// renders COULD-NOT-CHECK (present, nil) rather than a fabricated MISSING.
+			// Mirror the stamp lane's stderr diagnostic for a fetch fault (clause 8:
+			// demote a stderr to could-not-check, do not swallow it into a verdict).
+			fmt.Fprintf(os.Stderr, "statusgen: --corroborate: could not fetch cited %s: %v\n", key, err)
+			fetched[key] = nil
+			continue
+		}
+		fetched[key] = art
 	}
 	return corroborateCitations(cits, fetched, repo)
 }
