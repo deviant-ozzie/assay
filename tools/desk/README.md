@@ -1185,7 +1185,7 @@ if it is unset. It absorbs the App-token mint from
 token **in memory only** — it mints fresh per invocation and never caches it to disk.
 
 ```bash
-deskpost review  <owner/repo> <pr>     --verdict approve|request-changes --head <full-40-char-sha> --body-file F
+deskpost review  <owner/repo> <pr>     --verdict approve|request-changes --head <full-40-or-64-char-sha> --body-file F
 deskpost comment <owner/repo> <number> --body-file F     # <number> = a PR **or** an issue
 deskpost ready   <owner/repo> <pr>
 
@@ -1232,7 +1232,9 @@ APPROVED at the current head" precondition cannot be satisfied by anyone but the
 Constraints in code:
 
 - **`review`** requires `--head` — the SHA the verdict was formed against, as the **FULL
-  40-char lowercase hex** SHA (`gh pr view <N> --json headRefOid -q .headRefOid`). An
+  40- (or 64-) char lowercase hex** SHA (`gh pr view <N> --json headRefOid -q .headRefOid`).
+  (64 is admitted because `isFullSHA` matches `deskkit`'s bodycheck definition of a git SHA;
+  GitHub serves SHA-1 today, so 40 is what a caller normally passes.) An
   abbreviated or otherwise malformed value is a **usage error (exit 2, nothing audited)**
   naming the form, not a head mismatch (#214): a short SHA can never equal the resolved
   head, so without the form gate it surfaced as a "mismatch" between two SHAs differing

@@ -14,10 +14,13 @@ const (
 	// verify-desk's Evidence-drain ceiling as well as the per-PR cap.
 	//
 	// 10 was the original value. It was the busiest-hour figure measured from the
-	// ledger (#1255's extract — the busiest rolling hour on record landed only a
-	// minority of its attempts as real posts), carried forward from the retired
-	// RateLimitPerHour as the blast-radius cap: one runaway agent's write ceiling
-	// on a single target.
+	// ledger in #1255's extract — as of that extract, the busiest rolling hour it
+	// examined landed only a minority of its attempts as real posts. The figure is
+	// DATED to that extract deliberately, not stated as a standing record: later
+	// clock hours have carried more `ok` deskpost posts than that extract's peak, so
+	// "10 was the busiest hour" ages only if it is read as "as of #1255", not as a
+	// current fact. It was carried forward from the retired RateLimitPerHour as the
+	// blast-radius cap: one runaway agent's write ceiling on a single target.
 	//
 	// Raised to 20 on 2026-08-14 to accelerate the verification-backlog drain.
 	// Empirical basis, measured this date from ~/.config/assay/audit.jsonl: the
@@ -32,8 +35,10 @@ const (
 	// So 20 is a deliberate throughput LOOSENING for a supervised drain — 2× the
 	// measured peak — NOT a new measurement of busiest-hour demand. Stated as
 	// plainly as RateLimitPerRepoPerHour below states that it is "not measured":
-	// the busiest-hour figure on record remains 10; 20 buys drain headroom above
-	// it and nothing here re-measures the peak.
+	// the busiest-hour figure IN THE #1255 EXTRACT was 10 (dated to that extract,
+	// not claimed as a standing record — see above); 20 buys drain headroom above
+	// it and nothing here re-measures the peak. The conclusion is unaffected by a
+	// higher later peak: 20 clears any busiest hour observed since.
 	//
 	// Loop-safety is unaffected by this number. The circuit breaker (BreakerTrip
 	// consecutive non-progress attempts — an independent meter) still bounds a
@@ -192,6 +197,19 @@ func UnnumberedCapFor(tool string) int {
 // Note the asymmetry with the gates themselves: a dry run is still SUBJECT to both
 // meters (runOutward calls AllowWrite before it knows the verb's shape), it just does
 // not FEED them. That is the fail-closed direction — a rehearsal is free, not privileged.
+//
+// KNOWN, ACCEPTED CONSEQUENCE: because a dryrun feeds neither meter, a loop of PURE
+// dry runs never accumulates anything AllowWrite counts, so AllowWrite admits every
+// one of them. Their outward WRITES stay zero (that is the whole point), but each
+// rehearsal still makes its plan-time remote GETs, so a pure-rehearsal loop's remote
+// READS are effectively unbounded. Before ResultDryRun was made breaker-invisible a
+// dry run audited `noop`, which the breaker counted, so a rehearsal loop incidentally
+// stopped at BreakerTrip; that incidental bound is gone by design. Bounding rehearsal
+// READS would need a SEPARATE rehearsal meter (new design, deliberately not built
+// here) — and the properties that matter are unaffected: a runaway of REAL cuts still
+// trips (a success flood caps at RateLimitPerPRPerHour, a refusal loop opens the
+// breaker at BreakerTrip with zero writes, and splicing a dryrun between refusals does
+// not disarm it — see the dry-run tests in ratelimit_test.go).
 
 // chargesBudget reports whether an audit result consumes outward-write budget.
 //
