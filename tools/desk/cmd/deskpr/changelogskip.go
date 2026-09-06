@@ -101,8 +101,15 @@ func docsOnlyPaths(names []string) bool {
 // changedPathsVsBase lists the paths this branch changes relative to the base the PR
 // opens against. Three-dot, matching what the gate itself reads: the changes THIS branch
 // introduces, not everything that has happened on the base since it forked.
+//
+// --no-renames is load-bearing, not tidiness. With rename detection on, `--name-only`
+// reports a rename as its DESTINATION path alone, so moving a source file to
+// `docs/whatever.go` would present as a diff every path of which is under docs/ — a
+// documentation-only verdict on a change that moved code. Disabling detection lists the
+// removal and the addition as the two paths they are, and the source path outside docs/
+// disqualifies the PR as it should.
 func changedPathsVsBase(f *gitFacts) ([]string, error) {
-	out, err := git(f.dir, "diff", "--name-only", f.baseRef+"...HEAD")
+	out, err := git(f.dir, "diff", "--no-renames", "--name-only", f.baseRef+"...HEAD")
 	if err != nil {
 		return nil, err
 	}

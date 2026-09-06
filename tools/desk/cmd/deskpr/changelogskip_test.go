@@ -308,3 +308,31 @@ func TestChangelogGateWired(t *testing.T) {
 		}
 	})
 }
+
+// TestCreateRenameIntoDocsGetsNoLabel is the rename case. Git's rename detection reports a
+// rename as its DESTINATION path alone, so a source file MOVED under docs/ would otherwise
+// present as a diff every path of which is documentation — a documentation-only verdict on
+// a change that moved code. The source path must still disqualify it.
+func TestCreateRenameIntoDocsGetsNoLabel(t *testing.T) {
+	work := newChangelogFixture(t, changelogFixtureOpts{
+		baseFiles: map[string]string{
+			"changelog/README.md":              "Per-PR changelog fragments live here.\n",
+			"tools/desk/cmd/deskpr/feature.go": "package main\n\nfunc feature() {}\n",
+		},
+		branchFiles: map[string]string{
+			"docs/feature.go": "package main\n\nfunc feature() {}\n",
+		},
+	})
+	// The move itself: the fixture wrote the destination, so remove the source to make the
+	// branch commit a genuine rename that git's detector will pair up.
+	mustGit(t, work, "rm", "-q", "tools/desk/cmd/deskpr/feature.go")
+	mustGit(t, work, "commit", "-q", "-m", "move it")
+
+	calls := withEnv(t, work)
+	if rc := run([]string{"create", "--title", "move a file", "--body-min", createDocsBody}); rc != deskkit.ExitOK {
+		t.Fatalf("create rc = %d, want 0", rc)
+	}
+	if addedChangelogSkipLabel(*calls) {
+		t.Fatalf("a rename whose SOURCE lives outside docs/ must not be waived; gh calls: %v", ghCalls(*calls))
+	}
+}
