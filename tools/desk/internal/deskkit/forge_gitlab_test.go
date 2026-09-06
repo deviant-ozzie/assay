@@ -284,6 +284,7 @@ func glMR(overrides map[string]any) map[string]any {
 		"iid": 7, "state": "opened", "draft": true, "title": "Draft: add the thing",
 		"sha": "abc123", "changes_count": "3",
 		"source_branch":         "feat/x",
+		"target_branch":         "main",
 		"detailed_merge_status": "mergeable",
 		"labels":                []string{"authorization-needed"},
 		"author":                map[string]any{"id": 99, "username": "worker-bot"},
@@ -508,6 +509,25 @@ func glCases() []glCase {
 			name: "repo_visibility", method: "RepoVisibility",
 			setup: func(s *glServer) { s.project = map[string]any{"visibility": "public"} },
 			run:   func(f *GitLabForge) (any, error) { return f.RepoVisibility(glRepo) },
+		},
+		{
+			// only_allow_merge_if_pipeline_succeeds ON → the merge is gated on the pipeline, so
+			// the required set is non-empty (a synthetic "pipeline" context). This is what makes
+			// an absent rollup could-not-verify rather than green at the deskflip gate.
+			name: "required_status_checks_pipeline_gated", method: "RequiredStatusChecks",
+			setup: func(s *glServer) {
+				s.project = map[string]any{"only_allow_merge_if_pipeline_succeeds": true}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.RequiredStatusChecks(glRepo, "main") },
+		},
+		{
+			// Setting OFF → nothing forces a check, so the required set is empty and an absent
+			// rollup is green.
+			name: "required_status_checks_none", method: "RequiredStatusChecks",
+			setup: func(s *glServer) {
+				s.project = map[string]any{"only_allow_merge_if_pipeline_succeeds": false}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.RequiredStatusChecks(glRepo, "main") },
 		},
 		{
 			name: "create_draft_change", method: "CreateDraftChange",

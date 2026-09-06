@@ -719,14 +719,19 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 	dispatcherToken = tok
 
 	// RE-STAMP, NOT ADD-ON-TOP. Labels are a SET, so `--add-label` over a label the PR
-	// already carries is a NO-OP — and a stamp applied by some other login is exactly the
-	// state the floor refuses. Re-running this step therefore changed nothing on the PRs
-	// that needed it most. A GitHub timeline is APPEND-ONLY, so the only repair the forge
-	// offers is to REMOVE the label and re-apply it under the dispatcher; that is what the
-	// floor's reader resolves (the actor of the last standing `labeled` event), so it is
-	// what this step must do. The set to remove comes from deskkit.ForeignStampLabels, the
-	// same resolution the reader uses, so writer and reader cannot disagree about which
-	// application is standing.
+	// already carries is a NO-OP — and a stamp the floor cannot read is exactly the state it
+	// refuses. Re-running this step therefore changed nothing on the PRs that needed it most.
+	// A GitHub timeline is APPEND-ONLY, so the only repair the forge offers is to REMOVE the
+	// offending labels and re-apply the intended pair under the dispatcher; that is what the
+	// floor's reader resolves (the actor of the last standing `labeled` event), so it is what
+	// this step must do. The set to remove comes from deskkit.ReStampRemovals(labels): every
+	// present dispatched-* label that is not part of the pair being applied (a conflicting,
+	// stale, or malformed stamp — INCLUDING one an earlier run of the dispatcher itself left),
+	// plus any half of the pair whose standing application is foreign. Clearing only the
+	// foreign labels (the old ForeignStampLabels set) left a dispatcher-applied conflicting
+	// label standing, so the re-dispatch reported OK while the floor kept refusing — the
+	// present-but-unreadable deadlock this recovery exists to break. Reader and writer project
+	// the standing-applier resolution from one place, so they cannot disagree about it.
 	//
 	// The reads are UNVERIFIABLE on failure rather than best-effort: proceeding blind would
 	// silently re-create the no-op — the labels would be "applied" and the PR would still
@@ -749,15 +754,15 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 				"carries cannot be established, so a foreign application could not be replaced.",
 			stepModelStamp, repo, o.pr, firstLine(tlRead.stderr)), tlRead.err)
 	}
-	foreign := deskkit.ForeignStampLabels(deskkit.StampTimeline{
+	stale := deskkit.ReStampRemovals(deskkit.StampTimeline{
 		Present: parseLabelNames(labelRead.stdout),
 		Events:  parseLabelEventLines(tlRead.stdout),
-	}, deskkit.IsDispatcherLogin)
-	for _, l := range foreign {
+	}, labels, deskkit.IsDispatcherLogin)
+	for _, l := range stale {
 		if r := runCmd("", "gh", "pr", "edit", fmt.Sprint(o.pr), "-R", repo, "--remove-label", l); r.err != nil {
 			return "", deskkit.Unverifiable(fmt.Sprintf(
-				"step %s: could not remove the foreign stamp %s from %s#%d (%s) — re-applying it on top "+
-					"would be a no-op, leaving the PR carrying an application the floor refuses.",
+				"step %s: could not remove the stamp label %s from %s#%d (%s) — re-applying the intended "+
+					"stamp on top would be a no-op, leaving the PR carrying labels the floor refuses.",
 				stepModelStamp, l, repo, o.pr, firstLine(r.stderr)), r.err)
 		}
 	}
@@ -778,9 +783,10 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 	// record of why; the removal is half the repair and belongs in the step report next to
 	// the application it made possible.
 	restamped := ""
-	if len(foreign) > 0 {
-		restamped = fmt.Sprintf(" (RE-STAMPED: removed %s, applied by a login this floor does not accept, "+
-			"before applying the stamp — adding over a present label is a no-op)", strings.Join(foreign, " + "))
+	if len(stale) > 0 {
+		restamped = fmt.Sprintf(" (RE-STAMPED: removed %s — a conflicting, stale, or foreign-applied "+
+			"stamp the floor cannot read — before applying the intended stamp, since adding over a "+
+			"present label is a no-op)", strings.Join(stale, " + "))
 	}
 	return fmt.Sprintf("OK: applied %s as the %s App, the identity the capability floor accepts (%s)%s",
 		strings.Join(labels, " + "), deskkit.DispatcherRole, tokenPathForMessage(tokPath), restamped), nil

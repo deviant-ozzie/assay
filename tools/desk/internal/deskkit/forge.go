@@ -80,6 +80,13 @@ type PullRequest struct {
 	// distinct from HeadSHA. Consumer: cmd/deskreply's preflight, which refuses when the
 	// worktree's checked-out branch is not the branch the change is built from.
 	HeadRef string
+	// BaseRef is the TARGET branch name (GitHub base.ref ↔ GitLab target_branch) — the branch
+	// whose protection rules gate the merge. Consumer: cmd/deskflip's checks-green condition,
+	// which reads the required status checks configured on THIS branch (RequiredStatusChecks)
+	// to tell "no CI rollup because nothing is required" apart from "no rollup because the
+	// required checks have not reported". Empty when the forge did not report a base branch,
+	// which the consumer treats as could-not-check rather than as "no branch".
+	BaseRef string
 	// UpdatedAt is the forge's own last-modified timestamp, RFC3339, empty when the forge
 	// did not report one. Consumed by the loopengine liveness taxonomy's PR-activity probe
 	// (see internal/loopengine/probes.go) — every other existing consumer of PullRequest
@@ -408,6 +415,19 @@ type Forge interface {
 	ListChangedFiles(repo ForgeRepo, number int) ([]ChangedFile, error)
 	// ChecksAtHead returns the CI rollups at a commit, each with its asserted total count.
 	ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, error)
+	// RequiredStatusChecks returns the status-check CONTEXTS branch protection REQUIRES on
+	// the named branch of repo — the checks whose success the forge itself gates a merge on.
+	// An EMPTY slice means the branch requires no status checks: nothing is configured to
+	// block a merge, so an absent CI rollup is everything there will ever be. A branch with
+	// no protection at all is empty, NOT an error — GitHub answers 404 for an unprotected
+	// branch and GitLab answers with the pipeline-gating setting off, both meaning "nothing
+	// required". A read that cannot DETERMINE the required set — a permission or transport
+	// failure, an unreadable response, or a branch the caller could not name — returns an
+	// error, which the caller treats as could-not-check and refuses: reading a green verdict
+	// off "we could not learn what is required" is the fail-open this read exists to prevent.
+	// Consumer: cmd/deskflip's checks-green condition (freeze rule: this read lands with the
+	// call site that consumes it).
+	RequiredStatusChecks(repo ForgeRepo, branch string) ([]string, error)
 	// IssueReactions returns the reactions/awards on an issue or PR (the admission gate
 	// surface: reaction ↔ award emoji).
 	IssueReactions(repo ForgeRepo, number int) ([]Reaction, error)

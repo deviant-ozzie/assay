@@ -49,6 +49,7 @@ ticked without a case behind it.
 | 17 | `ListComments(repo, number)` | read comments (identity + marker + hidden state) | `deskreply` `--workpad` comment list (GraphQL `comments(first:100)` — REST carries no `isMinimized`) | `GET /merge_requests/:iid/notes` ordered `created_at asc`; SYSTEM notes dropped (GitLab lists its own activity beside human comments); `Minimized` is false because GitLab has no minimise feature — exact, not defaulted; `URL` is empty because GitLab publishes no per-note permalink | implemented |
 | 18 | `EditComment(repo, commentID, body)` | edit ONE existing comment | `deskreply` `--workpad` edit (GraphQL `updateIssueComment`, node id) | `PUT /merge_requests/:iid/notes/:id`; the opaque id is the backend-minted `gitlab:<owner>/<name>!<iid>#note<id>`, and a foreign or project-mismatched id is REFUSED rather than resolved | implemented |
 | 19 | `ApplyLabels(repo, number, change)` | reconcile a change's labels in one operation | `deskpost` `ensureLabel`+`listLabels`+`addLabels`+`removeLabel` (4 hand-built requests) / `deskflip` `ensureLabelSwap` (`gh pr edit --add-label/--remove-label`) | `POST /projects/:id/labels` to ensure (409/400 "already taken" = the ensure's post-condition already holds), then ONE `PUT /merge_requests/:iid` carrying `add_labels`+`remove_labels` — atomic, where the GitHub backend issues one DELETE per removal. Colors travel as bare hex and each backend renders its own form (GitHub forbids a leading `#`, GitLab requires one) | implemented |
+| 20 | `RequiredStatusChecks(repo, branch)` | read the status checks branch protection REQUIRES on a branch | `deskflip` `readRequiredChecks` (`GET /repos/{o}/{r}/branches/{branch}/protection/required_status_checks`; 404 = no protection / none required = empty set, every other non-2xx = could-not-check) — union of the legacy `contexts` and the newer `checks[].context` | `GET /projects/:id` `only_allow_merge_if_pipeline_succeeds` — the all-tier pipeline-gating setting; ON → a synthetic `pipeline` context (a check IS required), OFF → empty. External status checks stay in the Ultimate/MR-scoped lane (op 5) | implemented |
 
 | 20 | `WriteFile(repo, in)` | write a file's whole content on a branch (Evidence landing) | `deskevidence` `commitFile` (`PUT /repos/{o}/{r}/contents/{path}`, base64, branch) | `POST`/`PUT /projects/:id/repository/files/:path` (Repository Files API); `start_branch` creates the side branch inline; the default branch is protected (pilot D-8) so a direct write to it returns the `DefaultBranchNotWritable` sentinel — nothing written, no write call | implemented |
 | 21 | `ReadFile(repo, in)` | read a file's content at a ref (Evidence merge) | `deskevidence` `fetchRemoteFile` (`GET /repos/{o}/{r}/contents/{path}?ref=`) | `GET /projects/:id/repository/files/:path?ref=`; `last_commit_id` → the opaque `FileContent.SHA` an update cites; a 404 propagates as a could-not-check the caller tests with `IsForgeNotFound` | implemented |
@@ -76,6 +77,16 @@ sibling; 17 and 18 by `deskreply`'s `--workpad` upsert; 19 by `deskflip`'s queue
 intent — and so a caller never needs a label-LISTING operation of its own: it names the label-name
 FAMILIES it owns this run and the backend drops their stale members. A family the caller has no
 definite value for is simply not named, so nothing in it is touched.
+
+**Op 20 (`RequiredStatusChecks`) was added under the same freeze rule** with its one consuming call
+site converted in the same change: `deskflip`'s checks-green condition. It exists because an ABSENT
+CI rollup has two very different meanings — "nothing is required to merge" (green) and "the required
+checks have not reported yet" (could-not-verify) — and the coarse roster ci-tag cannot tell them
+apart, so a repo that runs CI without REQUIRING any check on App-authored PRs was unflippable
+forever. The read keys the gate on what the forge actually enforces: an empty required set makes an
+absent rollup green, a non-empty one keeps it could-not-verify, and a required-set that cannot be
+read stays could-not-check (fail closed). It is a READ only; nothing about the gate's non-empty-rollup
+behaviour changed.
 
 `PostComment` (op 9) also gained a return value in that brief — a `CommentRef` carrying the created
 comment's opaque id, numeric id and (where the forge publishes one) URL — so a write is answerable

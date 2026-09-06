@@ -56,7 +56,9 @@ func tlOf(events ...LabelEvent) StampTimeline {
 func TestModelCapabilityFloorFourCases(t *testing.T) {
 	const disp = "the-dispatcher"
 	strongStamp := []LabelEvent{modelEvent("opus-4.8", disp), tierEvent("strong", disp)}
-	cheapStamp := []LabelEvent{modelEvent("haiku-3", disp), tierEvent("any", disp)}
+	// A readable, dispatcher-applied stamp whose tier claims NO strength. It is the stamp
+	// the override case needs a non-clearing subject for; it is no longer a refusal.
+	noClaimStamp := []LabelEvent{modelEvent("haiku-3", disp), tierEvent("any", disp)}
 
 	t.Run("attested strong proceeds", func(t *testing.T) {
 		d := ModelCapabilityFloor(tlOf(strongStamp...), dispatcherIs(disp), false)
@@ -68,18 +70,22 @@ func TestModelCapabilityFloorFourCases(t *testing.T) {
 		}
 	})
 
-	t.Run("attested cheap refuses with remediation", func(t *testing.T) {
-		d := ModelCapabilityFloor(tlOf(cheapStamp...), dispatcherIs(disp), false)
-		if d.Outcome != FloorRefuse || d.Outcome.Proceeds() {
-			t.Fatalf("outcome = %v, want FloorRefuse", d.Outcome)
+	// The tier vocabulary's only below-strong value is `any`, and `any` asserts no
+	// strength — so it takes the NOTICE path, not the refusal path. See
+	// TestModelFloorTierAnyReadsAsAbsentAndProceedsWithNotice for why, and
+	// TestFloorTierRankKeepsTheBelowFloorBranchLive for the refusal branch it leaves in
+	// place for a future rung.
+	t.Run("attested `any` claims no strength and proceeds with a NOTICE", func(t *testing.T) {
+		d := ModelCapabilityFloor(tlOf(noClaimStamp...), dispatcherIs(disp), false)
+		if d.Outcome != FloorNoticeAllow || !d.Outcome.Proceeds() {
+			t.Fatalf("outcome = %v, want FloorNoticeAllow", d.Outcome)
 		}
-		// Remediation must say WHAT INSTEAD, not just refuse (pre-mortem row: a dead-end
-		// refusal is a finding).
-		if !strings.Contains(d.Message, "strong-tier session") {
-			t.Fatalf("remediation does not name the escalation target:\n%s", d.Message)
+		if !strings.Contains(d.Message, "NOTICE") {
+			t.Fatalf("the `any` message is not a NOTICE:\n%s", d.Message)
 		}
-		if !strings.Contains(d.Message, "delegation downward") {
-			t.Fatalf("remediation does not state the asymmetry (delegate down, not up):\n%s", d.Message)
+		// It must name the label, so this NOTICE is distinguishable from the unstamped one.
+		if !strings.Contains(d.Message, DispatchedTierPrefix+"any") {
+			t.Fatalf("the NOTICE does not name the label it read:\n%s", d.Message)
 		}
 	})
 
@@ -97,8 +103,9 @@ func TestModelCapabilityFloorFourCases(t *testing.T) {
 	})
 
 	t.Run("override proceeds with the loud marker", func(t *testing.T) {
-		// Override on the CHEAP stamp: it must proceed anyway, and loudly.
-		d := ModelCapabilityFloor(tlOf(cheapStamp...), dispatcherIs(disp), true)
+		// Override on a stamp that does not CLEAR the floor: it must proceed anyway, and
+		// loudly — the override short-circuits before the state is examined at all.
+		d := ModelCapabilityFloor(tlOf(noClaimStamp...), dispatcherIs(disp), true)
 		if d.Outcome != FloorOverrideAllow || !d.Outcome.Proceeds() {
 			t.Fatalf("outcome = %v, want FloorOverrideAllow", d.Outcome)
 		}
@@ -202,14 +209,15 @@ func TestModelCapabilityFloorStampCases(t *testing.T) {
 			wantInMsg:   []string{"UNREADABLE", other},
 		},
 		{
-			why:         "any by the dispatcher: READABLE but below the floor — refuse NAMING the tier",
+			why:         "any by the dispatcher: READABLE and claims NO strength — NOTICE, naming the label",
 			events:      []LabelEvent{modelEvent("example-model-2", disp), tierEvent("any", disp)},
-			wantOutcome: FloorRefuse,
+			wantOutcome: FloorNoticeAllow,
 			wantState:   ModelStamped,
-			// A readable below-floor stamp must NOT be reported as unreadable: the operator's
-			// next action differs (escalate the write vs re-stamp the PR), so the message must
-			// name the tier it actually read and must not say UNREADABLE.
-			wantInMsg: []string{`tier "any"`, "strong-tier session"},
+			// `any` is the brief schema's "no tier demanded", so it is the absence of a
+			// strength claim rather than an attested below-floor dispatch. The message must
+			// name the label it read, so the operator can tell this NOTICE from the one an
+			// entirely unstamped PR produces, and must not carry refusal wording.
+			wantInMsg: []string{"NOTICE", DispatchedTierPrefix + "any"},
 		},
 		{
 			why: "conflicting tiers from the dispatcher: UNREADABLE",
@@ -347,5 +355,126 @@ func TestModelFloorTierIsTopOfVocabulary(t *testing.T) {
 	}
 	if tierMeetsFloor("any") {
 		t.Fatal("tier 'any' cleared the strong floor")
+	}
+}
+
+// A `dispatched-tier:any` stamp is NOT a strength claim, so it must read as ABSENT and
+// proceed with a NOTICE — not as an attested below-floor dispatch.
+//
+// WHY. The tier vocabulary the dispatcher writes is the brief's own `exec-tier:` value, and
+// `any` is that schema's way of saying "this item does not demand a particular strength" —
+// it records the ABSENCE of a demand, never an assertion that a weak runner was launched. A
+// floor that read `any` as "attested below strong" therefore refused every PR dispatched
+// from an unremarkable brief, which is the opposite of what the three-case design says: the
+// floor targets an attestation that a below-floor session ran, and `any` is not one. So the
+// three cases the floor actually distinguishes are attested-at-or-above (proceed), attested
+// BELOW (refuse), and no strength attestation at all (proceed with a NOTICE) — and `any`
+// belongs to the third, alongside the genuinely unstamped PR.
+//
+// The NOTICE must NAME the label, because "no attestation" would be a confusing thing to
+// read on a PR that visibly carries a dispatched-tier label: the operator has to be able to
+// tell the two ways of reaching this outcome apart.
+func TestModelFloorTierAnyReadsAsAbsentAndProceedsWithNotice(t *testing.T) {
+	const disp = "the-dispatcher"
+
+	// The tier half is normalized by the reader, so the spelling on the label must not
+	// change the answer: a stamp is a stamp in any case.
+	for _, tier := range []string{"any", "Any", "ANY"} {
+		t.Run("tier "+tier, func(t *testing.T) {
+			d := ModelCapabilityFloor(
+				tlOf(modelEvent("example-model-2", disp), tierEvent(tier, disp)),
+				dispatcherIs(disp), false)
+			if d.Outcome != FloorNoticeAllow || !d.Outcome.Proceeds() {
+				t.Fatalf("outcome = %v, want FloorNoticeAllow — `any` is not a strength claim\nmessage: %s",
+					d.Outcome, d.Message)
+			}
+			if !strings.Contains(d.Message, "NOTICE") {
+				t.Errorf("the `any` message is not a NOTICE:\n%s", d.Message)
+			}
+			// The operator must be able to tell this NOTICE from the unstamped one.
+			if !strings.Contains(d.Message, DispatchedTierPrefix+"any") {
+				t.Errorf("the NOTICE does not name the %sany label it read:\n%s", DispatchedTierPrefix, d.Message)
+			}
+			// It is a proceed, not a refusal: none of the refusal wording may appear.
+			if strings.Contains(d.Message, "UNREADABLE") || strings.Contains(d.Message, "BELOW the floor") {
+				t.Errorf("an `any` stamp was reported with refusal wording:\n%s", d.Message)
+			}
+		})
+	}
+}
+
+// REGRESSION GUARD for the change above: loosening `any` must not loosen anything else. A
+// stamp that CONFLICTS, or that a non-dispatcher applied, is still present-but-UNREADABLE
+// and still refuses — including when one of the conflicting halves is `any`.
+func TestModelFloorTierAnyLooseningDoesNotLoosenUnreadableStamps(t *testing.T) {
+	const disp, other = "the-dispatcher", "someone-else"
+	cases := []struct {
+		why    string
+		events []LabelEvent
+	}{
+		{
+			why: "conflicting tiers (any + strong) from the dispatcher",
+			events: []LabelEvent{
+				modelEvent("example-model-1", disp),
+				tierEvent("strong", disp),
+				tierEvent("any", disp),
+			},
+		},
+		{
+			why:    "an `any` stamp applied by a NON-dispatcher identity",
+			events: []LabelEvent{modelEvent("example-model-2", other), tierEvent("any", other)},
+		},
+		{
+			why:    "an incomplete `any` stamp (tier half only)",
+			events: []LabelEvent{tierEvent("any", disp)},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.why, func(t *testing.T) {
+			d := ModelCapabilityFloor(tlOf(c.events...), dispatcherIs(disp), false)
+			if d.Outcome != FloorRefuse || d.Outcome.Proceeds() {
+				t.Fatalf("outcome = %v, want FloorRefuse — an unreadable stamp is not `any`\nmessage: %s",
+					d.Outcome, d.Message)
+			}
+			if d.State != ModelIndeterminate {
+				t.Fatalf("state = %v, want ModelIndeterminate", d.State)
+			}
+			if !strings.Contains(d.Message, "UNREADABLE") {
+				t.Errorf("the refusal does not report the stamp as UNREADABLE:\n%s", d.Message)
+			}
+		})
+	}
+}
+
+// The below-floor REFUSAL branch is kept live by the rank order, not by a value that
+// currently reaches it. With the vocabulary as it stands ({any, strong}) every readable
+// stamp either clears the floor or claims no strength, so no input lands in that branch —
+// and a reader could reasonably conclude it is dead and delete it. It is not: the tier set
+// is DERIVED from the brief schema's `exec-tier:` values, so a rung added between `any` and
+// `strong` must refuse, and this test pins the two questions apart so a future rung inherits
+// the refusal rather than the NOTICE.
+func TestFloorTierRankKeepsTheBelowFloorBranchLive(t *testing.T) {
+	if !tierMeetsFloor(ModelFloorTier) {
+		t.Fatalf("the floor tier %q does not meet its own floor", ModelFloorTier)
+	}
+	if tierMeetsFloor(NoStrengthClaimTier) {
+		t.Fatalf("%q meets the %s floor — the floor is not a floor", NoStrengthClaimTier, ModelFloorTier)
+	}
+	// An unknown tier ranks below everything, so it can never satisfy the floor. (It never
+	// reaches the floor as a STAMPED state either — the reader calls it Indeterminate —
+	// but the fail-closed direction is asserted here rather than assumed.)
+	if tierMeetsFloor("some-tier-nobody-emits") {
+		t.Fatal("an unknown tier satisfied the floor — the rank must fail closed")
+	}
+	// "claims no strength" is a DIFFERENT question from "meets the floor": exactly one
+	// vocabulary value answers yes, and it is not the floor tier.
+	if tierClaimsNoStrength(ModelFloorTier) {
+		t.Fatalf("%q was read as claiming no strength", ModelFloorTier)
+	}
+	for _, tier := range DispatchTiers() {
+		if tierMeetsFloor(tier) == tierClaimsNoStrength(tier) {
+			t.Fatalf("tier %q is both/neither at-floor and no-claim — a rung was added without "+
+				"deciding which side of the floor it falls on", tier)
+		}
 	}
 }

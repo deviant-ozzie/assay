@@ -433,6 +433,7 @@ func (g *GitLabForge) GetPullRequest(repo ForgeRepo, number int) (*PullRequest, 
 		Labels:       append([]string(nil), mr.Labels...),
 		URL:          mr.WebURL,
 		HeadRef:      mr.SourceBranch,
+		BaseRef:      mr.TargetBranch,
 	}
 	if mr.Author != nil {
 		out.Author = gitlabAccount(mr.Author.ID, mr.Author.Username)
@@ -836,6 +837,46 @@ func (g *GitLabForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, e
 	}
 	out.CheckRunsTotalCount = gitlabTotal(lastResp, len(out.CheckRuns))
 	return out, nil
+}
+
+// RequiredStatusChecks answers, for GitLab, whether a merge on the branch is gated on a
+// status check — the forge-neutral question deskflip's checks-green condition asks.
+//
+// The all-tier analog of GitHub's required status checks is the project setting
+// `only_allow_merge_if_pipeline_succeeds`: when it is on, GitLab gates the merge on the
+// pipeline, so an absent pipeline is NOT "nothing required" and the required set is
+// non-empty. When it is off, nothing forces a check and the set is empty. The setting is
+// read from `GET /projects/:id`, which is available at every tier — so this answer does not
+// depend on the Ultimate-only external-status-check surface (those checks are MR-scoped and
+// already surface through ChecksAtHead's statuses; see the forge-gitlab inventory, op 5).
+//
+// A project read that FAILS is could-not-check and is returned as the mapped error, so the
+// caller fails closed rather than assuming nothing is required.
+//
+// The branch argument is accepted for seam parity with GitHub; GitLab's pipeline-gating
+// setting is project-scoped, so the same answer holds for every branch of the project. An
+// empty branch is still refused, matching the GitHub backend's could-not-check.
+func (g *GitLabForge) RequiredStatusChecks(repo ForgeRepo, branch string) ([]string, error) {
+	cl, err := g.client()
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(branch) == "" {
+		return nil, Unverifiable("cannot read the required status checks without a branch name — "+
+			"undetermined is could-not-check", nil)
+	}
+	path := fmt.Sprintf("/projects/%s", g.projectPath(repo))
+	p, _, perr := cl.Projects.GetProject(repo.Slug(), nil)
+	if perr != nil {
+		return nil, g.mapErr(http.MethodGet, path, perr)
+	}
+	if p.OnlyAllowMergeIfPipelineSucceeds {
+		// GitLab names no individual context here — the gate is "the pipeline must succeed" —
+		// so a single synthetic context reports that a check IS required without inventing a
+		// name the forge did not give.
+		return []string{"pipeline"}, nil
+	}
+	return nil, nil
 }
 
 // gitlabBuildState maps a GitLab build state to GitHub's combined-status vocabulary
