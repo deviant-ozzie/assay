@@ -294,7 +294,19 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// that has not adopted the field.
 	rootRepoName, repoProblems := rootRepo(streams)
 	problems = append(problems, repoProblems...)
-	problems = append(problems, registerIntegrityProblems(root)...)
+	// Register-integrity check, path-scoped by the CI-supplied --changed set the
+	// same way the DAR/product-scope checks already are. With NO --changed set (a
+	// full-tree / main-side regen) this is unchanged: every register defect is a
+	// hard PROBLEM. With a --changed set (the PR-side gate) a pre-existing defect
+	// on a register file the diff never touched demotes to a NOTICE — it is
+	// already red on main's own status-regen, which owns it — so one unrelated
+	// main-side register defect no longer hard-fails every open PR that touches
+	// docs/streams/**. A defect the PR's own diff introduces or touches (that file
+	// in the changed set) still fails: the gate keeps its teeth for the case it
+	// exists for.
+	regProblems, regNotices := registerIntegrityScoped(root, changed)
+	problems = append(problems, regProblems...)
+	notices = append(notices, regNotices...)
 	// REQUIREMENTS register (registers-v1 §6): per-entry shape validation —
 	// slug id, the ordered impact axis, the lifecycle, acceptance criteria,
 	// typed satisfied-by refs. The paired NOTICE states what is NOT checked:
