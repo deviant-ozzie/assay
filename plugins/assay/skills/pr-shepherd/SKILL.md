@@ -131,11 +131,12 @@ fragment (`<slug>` = the branch name) carrying at least one bullet, OR when the 
 `changelog:skip` (that label is the desk's or a human's, not yours). A branch you have RESUMED owes
 this file whether or not the check has run against it yet.
 
-**Read the PR's LABELS before you write a fragment for it.** A documentation-only or Evidence-only PR
-is expected to carry the waiver already — the PR-opening desk verb applies it at create when the whole
-diff is documentation — so a fragment added on top of it is a code changelog entry describing a change
-that is not in the diff. If the label is missing on a genuinely documentation-only branch, that is the
-thing to report to whoever can set it, not a fragment to invent.
+**Check what the PR actually owes before you write a fragment for it.** A documentation-only or
+Evidence-only PR owes none — a fragment added on top of one is a code changelog entry describing a
+change that is not in the diff — and some repos' changelog checks classify such a PR themselves and go
+green with no label at all. Where the check does NOT classify it and the branch is genuinely
+documentation-only, the move is to ASK the maintainer for `changelog:skip` and say so on the PR. It is
+never a fragment to invent, and never a label to apply yourself.
 
 **Carve-out — when the fix IS the removal of a security control, the red check is NOT yours
 (gate: human).** If the only way to turn a red check green is to delete, disable, or weaken a

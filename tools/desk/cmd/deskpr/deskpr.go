@@ -50,7 +50,6 @@ type gitFacts struct {
 	branch        string
 	defaultBranch string
 	defaultRef    string // fully-qualified remote-tracking ref, e.g. "refs/remotes/origin/main" (unambiguous by construction, #840)
-	baseRef       string // the ref the PR actually opens against: --base resolved, or defaultRef when --base is empty
 	repo          string // owner/name
 	head          string // HEAD sha
 }
@@ -302,10 +301,6 @@ func cmdCreate(args []string) (err error) {
 	detail := "created " + url
 	if n := prNumberFromURL(url); n > 0 {
 		ac.pr = &n
-		// Documentation-only waiver for the per-PR changelog-fragment gate. Advisory and
-		// fail-open in every direction — see changelogskip.go for the four conditions and
-		// why a create that already succeeded is never failed by this.
-		detail += maybeApplyChangelogSkip(facts, n)
 		// Post-create mergeable check (#770): a PR GitHub reports CONFLICTING gets zero
 		// pull_request runs at its head — indistinguishable, on the audit line or any
 		// board, from "checks still pending" until something names the mergeable state
@@ -598,7 +593,7 @@ func preflight(dir, base string) (*gitFacts, error) {
 	}
 	return &gitFacts{
 		dir: dir, branch: branch, defaultBranch: defaultBranch,
-		defaultRef: defaultRef, baseRef: baseRef, repo: repo, head: head,
+		defaultRef: defaultRef, repo: repo, head: head,
 	}, nil
 }
 
