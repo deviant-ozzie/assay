@@ -236,13 +236,32 @@ func flip(o flipOpts) error {
 			"condition %s: checks at %s are not positively green (a check has not completed). Not-yet-green "+
 				"is could-not-verify, never green.", condChecksGreen, short(head)), nil)
 	case ciEmpty:
-		if deskkit.CIRequired(repo) {
-			return deskkit.Unverifiable(fmt.Sprintf(
-				"condition %s: no check rollup at %s on CI-required repo %s — an absent rollup on a repo that "+
-					"runs CI means the checks have not reported yet, which cannot be read as green.",
-				condChecksGreen, short(head), repo), nil)
+		// An ABSENT rollup is the config-vs-reality fork. The roster's coarse ci-tag says
+		// whether the repo "runs CI" — but a repo can run CI without REQUIRING any check to
+		// merge (checks that never fire on App-authored PRs, or a branch with no required
+		// checks at all), and GitHub itself would merge such a PR. So the gate keys on what the
+		// forge ACTUALLY enforces: the required-status-check set on the PR's base branch.
+		//
+		//   required set NON-EMPTY  → the absent rollup means those checks have not reported;
+		//                             that is not green (could-not-verify), so refuse.
+		//   required set EMPTY      → nothing gates the merge on a check, so the absent rollup
+		//                             is everything there will ever be — GREEN.
+		//   could-not-read the set  → fail CLOSED: refuse rather than assume none required.
+		required, rerr := readRequiredChecks(o, fg, fr, pr.BaseRef, head)
+		if rerr != nil {
+			return rerr
 		}
-		// A repo with no PR CI at all: an empty rollup is everything there will ever be.
+		if len(required) > 0 {
+			return deskkit.Unverifiable(fmt.Sprintf(
+				"condition %s: no check rollup at %s, but %s requires %d status check(s) on %q (%s) — an absent "+
+					"rollup when checks ARE required means they have not reported yet, which cannot be read as "+
+					"green.", condChecksGreen, short(head), repo, len(required), pr.BaseRef,
+				strings.Join(required, ", ")), nil)
+		}
+		// The base branch requires no status checks: an empty rollup is everything there will
+		// ever be, and nothing GitHub enforces is missing. Flip is allowed on this condition.
+		o.say("%s: no rollup at %s and %s requires no status checks on %q — nothing gates the merge on a check",
+			condChecksGreen, short(head), repo, pr.BaseRef)
 	case ciGreen:
 	}
 	o.say("%s OK: %d check(s) green at %s", condChecksGreen, len(checks), short(head))
@@ -788,6 +807,7 @@ type prInfo struct {
 	IsDraft      bool
 	Mergeable    string
 	HeadRefOid   string
+	BaseRef      string
 	ChangedFiles int
 	Labels       []labelInfo
 
@@ -923,6 +943,7 @@ func readPR(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo) (prInfo, error) 
 		IsDraft:      ch.Draft,
 		Mergeable:    ch.Mergeable,
 		HeadRefOid:   ch.HeadSHA,
+		BaseRef:      ch.BaseRef,
 		ChangedFiles: ch.ChangedFiles,
 		Labels:       labels,
 		change:       ch,
@@ -962,6 +983,34 @@ func readChecks(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo, head string)
 		})
 	}
 	return out, nil
+}
+
+// readRequiredChecks reads the status checks branch protection REQUIRES on the change's base
+// branch — the set that decides whether an ABSENT rollup is green or could-not-verify.
+//
+// It FAILS CLOSED in both directions the gate cares about. An empty base branch is refused
+// before the read (a required-set read against no branch is meaningless, and meaningless is
+// could-not-check). A read error is could-not-check and refuses UNVERIFIABLE, so a permission
+// or transport failure NEVER lets an absent rollup pass as green — the whole point of keying
+// on the real required set rather than the roster tag is undone if "could not read it" reads
+// as "nothing required". A 404 (no protection / no required checks) is NOT an error at the
+// backend; it comes back as an empty set, which the caller reads as green.
+func readRequiredChecks(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo, base, head string) ([]string, error) {
+	if strings.TrimSpace(base) == "" {
+		return nil, deskkit.Unverifiable(fmt.Sprintf(
+			"condition %s: no rollup at %s and PR #%d reports no base branch, so which branch's required "+
+				"checks would decide the absent rollup cannot be established — could-not-check is never green.",
+			condChecksGreen, short(head), o.pr), nil)
+	}
+	required, err := fg.RequiredStatusChecks(fr, base)
+	if err != nil {
+		return nil, deskkit.Unverifiable(fmt.Sprintf(
+			"condition %s: cannot read the required status checks on %q (%s) — with an absent rollup the flip "+
+				"depends on knowing what is required, and a required-set that could not be read is "+
+				"could-not-check, never 'nothing required'.",
+			condChecksGreen, base, firstLine(err.Error())), err)
+	}
+	return required, nil
 }
 
 func readReviews(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo) ([]reviewInfo, error) {
