@@ -91,10 +91,28 @@ func auditPath() (string, error) {
 	return filepath.Join(dir, "audit.jsonl"), nil
 }
 
-// SessionTag returns $CLAUDE_CODE_SESSION_ID if set (the variable the Claude Code
-// harness actually exports), else the legacy $CLAUDE_SESSION_ID, else "unknown".
-// It is self-reported: forensics, not enforcement.
+// SessionTag names the AGENT this process is acting as: $DESK_SESSION if set, else
+// $CLAUDE_CODE_SESSION_ID (the variable the Claude Code harness actually exports), else
+// the legacy $CLAUDE_SESSION_ID, else "unknown". It is self-reported: forensics, not
+// enforcement.
+//
+// WHY $DESK_SESSION COMES FIRST. A dispatched agent is a CHILD PROCESS of the session that
+// fanned it out, so it inherits the harness's session id verbatim: every agent in a
+// fan-out reports the same $CLAUDE_CODE_SESSION_ID, the dispatcher's. A tag read from that
+// alone therefore names the DISPATCHER, not the actor — which is wrong for an audit trail
+// (a fan-out's whole output attributed to one id) and wrong for anything keyed on it, since
+// a per-session budget then covers the fan-out rather than the agent. $DESK_SESSION is the
+// desk tools' own per-agent session id, set per dispatched agent and per role window, and
+// it is what distinguishes siblings; deskwt and deskroster already resolve it ahead of the
+// harness id, so preferring it here makes the tools agree on who "this session" is rather
+// than answering it two ways.
+//
+// The harness ids remain the fallback, so a plain human-driven session that never sets
+// $DESK_SESSION is unaffected.
 func SessionTag() string {
+	if s := strings.TrimSpace(os.Getenv("DESK_SESSION")); s != "" {
+		return s
+	}
 	if s := os.Getenv("CLAUDE_CODE_SESSION_ID"); s != "" {
 		return s
 	}
