@@ -19,7 +19,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 1/8 | 2026-09-06 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 4/8 | 2026-09-06 |  |
 | [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 0/11 | 2026-09-06 |  |
-| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 1/12 | 2026-09-06 |  |
+| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 1/13 | 2026-09-06 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 2/6 | 2026-09-06 |  |
 | [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 4/6 | 2026-09-06 |  |
 | [quality](docs/streams/quality/README.md) | P2 | active | 15/16 | 2026-09-06 |  |
@@ -45,37 +45,38 @@ _Held by per-stream caps: 4 brief(s) across 1 stream(s) — top: desk-tools. By 
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (40 desk-actionable of 44 total — 44 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (41 desk-actionable of 45 total — 45 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (40)
+### Desk-actionable (41)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
-| harness-portability | 01 [exec:strong] | implemented | 4500 | 7 | — | — | — |
+| harness-portability | 01 [exec:strong] | implemented | 5000 | 8 | — | — | — |
 | desktools-go-git | 02 | implemented | 4000 | 6 | — | — | — |
+| harness-portability | 02 [exec:strong] | implemented | 4000 | 6 | — | — | — |
 | derived-board | 03 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | desk-containers | 01 | implemented | 3500 | 5 | — | — | — |
 | desk-containers | 02 | implemented | 3500 | 5 | — | — | — |
-| harness-portability | 02 [exec:strong] | implemented | 3500 | 5 | — | — | — |
+| harness-portability | 04 [exec:strong] | implemented | 3500 | 5 | — | — | — |
+| harness-portability | 05 [exec:strong] | implemented | 3500 | 5 | — | — | — |
 | derived-board | 04 | implemented | 3000 | 2 | — | — | — |
 | desk-containers | 03 | implemented | 3000 | 4 | — | — | — |
 | forge-neutral | 03 [exec:strong] | implemented | 3000 | 2 | — | — | — |
-| harness-portability | 04 [exec:strong] | implemented | 3000 | 4 | — | — | — |
-| harness-portability | 05 [exec:strong] | implemented | 3000 | 4 | — | — | — |
+| harness-portability | 06 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | windows-port | 00 | implemented | 3000 | 4 | — | — | — |
-| harness-portability | 06 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | iso-9001 | 01 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | windows-port | 01 | implemented | 2500 | 3 | — | — | — |
+| harness-portability | 12 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | desk-supervision | 02 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desk-supervision | 06 | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 05 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 07 [exec:strong] | implemented | 1500 | 1 | — | — | — |
-| harness-portability | 12 [exec:strong] | implemented | 1500 | 1 | — | — | — |
+| windows-port | 03 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desk-supervision | 04 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-supervision | 07 | implemented | 1000 | 0 | — | — | — |
 | desk-supervision | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -103,7 +104,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 |---|---|---|---|---|---|---|---|
 | forge-neutral | 01 [exec:strong] | implemented | 7000 | 10 | — | — | — |
 | forge-neutral | 02 [exec:strong] | implemented | 4500 | 5 | — | — | — |
-| harness-portability | 03 | implemented | 4000 | 6 | — | — | — |
+| harness-portability | 03 | implemented | 4500 | 7 | — | — | — |
 
 ### Awaiting implementer rework (1)
 
@@ -223,7 +224,7 @@ _None._
 - 10 Conformance — one round trip driven entirely by desk verbs, and the writes they refuse — todo (wave 5)
 - 11 Install without `gh` — binary acquisition, forge-neutral prerequisites, per-forge primitives — todo (wave 5)
 
-### harness-portability (11 open)
+### harness-portability (12 open)
 
 - 01 Codex capability ground-truth — measured matrix, not inherited prior art — implemented (wave 0)
 - 02 Kill the drift debt — re-sync the bundle, flip the canonical home — implemented (wave 0)
@@ -236,6 +237,7 @@ _None._
 - 10 SpecMem portable-memory spike — one stream's registers across two harnesses — implemented (wave 0)
 - 12 Cursor — the third harness column (ground-truth + binding + generator verb + public column) — implemented (wave 5)
 - 13 Cursor live-desk-smoke protocol + first run — todo (wave 6)
+- 14 Code de-house — land the stream's tool and packaging deliverables in the public tree — todo (wave 6)
 
 ### iso-9001 (4 open)
 
@@ -265,7 +267,7 @@ _None._
 
 - 00 Build-tag split for the unix-only syscall sites — implemented (wave 0)
 - 01 Release build matrix — windows/amd64 + windows/arm64 + sha256s — implemented (wave 1)
-- 03 Windows install path — PowerShell-vs-Go-installer fork, then build — todo (wave 2)
+- 03 Windows install path — PowerShell-vs-Go-installer fork, then build — implemented (wave 2)
 - 04 Windows CI leg — statusgen --lint + a desk-verb smoke on Windows — todo (wave 2)
 - 05 Adoption-doc delta — the Windows adopter walkthrough — todo (wave 3)
 
@@ -358,4 +360,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**15** streams (**15** active, **0** paused) · **45/137** briefs done · completed initiatives: see `docs/archive/`
+**15** streams (**15** active, **0** paused) · **45/138** briefs done · completed initiatives: see `docs/archive/`
