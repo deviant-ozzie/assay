@@ -413,6 +413,10 @@ func AllowVerdictIssueWriteAt(repo string, now time.Time) error {
 
 // AllowWriteRepoWideAt is AllowWriteRepoWide with an injectable clock.
 func AllowWriteRepoWideAt(tool, repo string, now time.Time) error {
+	tool, err := RequireCanonicalToolKey(tool)
+	if err != nil {
+		return err // a key attributing to no known tool is refused, never given a private budget
+	}
 	mine, err := pointsFor(tool)
 	if err != nil {
 		return err
@@ -450,6 +454,10 @@ func AllowWriteRepoWideAt(tool, repo string, now time.Time) error {
 //     timestamp is unparseable — never a silent "assume under budget";
 //   - nil when one more write is within all budgets and the breaker is closed.
 func AllowWriteAt(tool, repo string, pr int, now time.Time) error {
+	tool, err := RequireCanonicalToolKey(tool)
+	if err != nil {
+		return err // a key attributing to no known tool is refused, never given a private budget
+	}
 	mine, err := pointsFor(tool)
 	if err != nil {
 		return err
@@ -485,15 +493,24 @@ func pointsFor(tool string) ([]auditPoint, error) {
 	if err != nil {
 		return nil, err // already an Unverifiable *DeskError
 	}
+	// Count by CANONICAL key so variant spellings of one tool share one budget: a test
+	// build (deskpost.test), a locally built copy (deskpr-322), or a guard line written
+	// under a basename all fold into the same tool's meter instead of each escaping into a
+	// fresh, uncounted bucket (audittoolkey.go). The caller's `tool` is resolved the same
+	// way, so a caller passing a variant is metered against the canonical history too. An
+	// unregistered key stays its own opaque bucket here (CanonicalToolKeyOr returns it
+	// unchanged) rather than failing this read closed — the write GATE is where an
+	// unattributable key is refused (RequireCanonicalToolKey), not the counting read.
+	want := CanonicalToolKeyOr(tool)
 	var mine []auditPoint
 	for _, e := range entries {
-		if e.Tool != tool {
+		if CanonicalToolKeyOr(e.Tool) != want {
 			continue
 		}
 		ts, perr := time.Parse(time.RFC3339, e.TS)
 		if perr != nil {
 			return nil, Unverifiable(
-				fmt.Sprintf("audit entry for %q has an unparseable ts %q — move file aside to audit.jsonl.corrupt-<ts>", tool, e.TS),
+				fmt.Sprintf("audit entry for %q has an unparseable ts %q — run `deskaudit recover` (quarantines the bad line and carries good entries forward; a plain move resets the budget + idempotency)", tool, e.TS),
 				perr)
 		}
 		mine = append(mine, auditPoint{ts: ts, result: e.Result, repo: e.Repo, pr: e.PR})
