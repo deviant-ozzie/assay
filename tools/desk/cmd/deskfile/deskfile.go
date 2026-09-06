@@ -168,7 +168,7 @@ func checkSessionBudget(repo, session string, now time.Time) error {
 		ts, perr := time.Parse(time.RFC3339, e.TS)
 		if perr != nil {
 			return deskkit.Unverifiable(
-				fmt.Sprintf("deskfile budget: audit entry has an unparseable ts %q — move file aside to audit.jsonl.corrupt-<ts>", e.TS), perr)
+				fmt.Sprintf("deskfile budget: audit entry has an unparseable ts %q — run `deskaudit recover` (quarantines the bad line and carries good entries forward; a plain move resets the budget + idempotency)", e.TS), perr)
 		}
 		if ts.Before(cutoff) {
 			continue
