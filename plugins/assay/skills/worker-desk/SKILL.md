@@ -21,8 +21,12 @@ one branch = one PR, and a merged or closed PR is DONE; and — in a repo that e
 `changelog/` directory carries `changelog/README.md`) — a notable change records one human-legible
 highlight as a per-PR fragment file (`changelog/<slug>.md`) rather than editing a shared section, while
 a genuinely non-notable PR carries the `changelog:skip` label, applied by the desk or a human and never
-self-applied by the worker. This paragraph binds the DESK's own writes; the worker is bound to the same
-fragment rule through the changelog clause `deskdispatch` emits verbatim in the worker kit.
+self-applied by the worker. The split is decided by the DIFF, not by taste: a notable CODE PR ships the
+fragment, while a documentation-only or Evidence-only PR owes none — and on a repo whose changelog check
+does not already classify documentation and Evidence PRs on its own, the waiver is ASKED FOR from the
+maintainer rather than applied by any automation. This paragraph
+binds the DESK's own writes; the worker is bound to the same fragment rule through the changelog clause
+`deskdispatch` emits verbatim in the worker kit.
 
 > Bindings for your harness — which mechanism each `capability:*` names — are in
 > `../../references/<harness>.md`.
