@@ -193,15 +193,67 @@ func TestPendingCheckIsUnverifiable(t *testing.T) {
 	}
 }
 
-// An EMPTY rollup on a CI-required repo means the checks have not reported — not green.
-func TestEmptyRollupOnCIRequiredRepoIsUnverifiable(t *testing.T) {
+// An EMPTY rollup when the base branch REQUIRES status checks means those checks have not
+// reported — not green. The gate keys on the ACTUAL required set (branch protection), not the
+// roster ci-tag, so this holds even on a ci-tagged repo: a non-empty required set + absent
+// rollup is could-not-verify.
+func TestEmptyRollupWithRequiredChecksIsUnverifiable(t *testing.T) {
 	s := newStub()
 	s.rollup = nil
+	s.requiredChecks = []string{"lint", "go-test"} // branch protection requires these
 	s.install(t)
 	s.reviews = approvalAtHead(t, headSHA)
 
 	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitUnverifiable {
-		t.Fatalf("empty rollup on a CI repo rc = %d, want %d", rc, deskkit.ExitUnverifiable)
+		t.Fatalf("empty rollup + required checks rc = %d, want %d", rc, deskkit.ExitUnverifiable)
+	}
+	if m := s.mutated(); len(m) != 0 {
+		t.Fatalf("flipped with required checks unreported: %v", m)
+	}
+	if s.reqCheckReads == 0 {
+		t.Errorf("the required-status-checks endpoint was never read — the gate did not key on the actual "+
+			"required set: %v", s.requests)
+	}
+}
+
+// The defect fix: a ci-tagged repo whose base branch requires NO status checks (App-authored
+// PRs run no CI, nothing is required to merge) must be FLIPPABLE on an absent rollup — the
+// absent rollup is everything there will ever be, and GitHub itself would merge it. Before the
+// fix this was unflippable forever because the roster ci-tag alone decided "CI required".
+func TestEmptyRollupWithNoRequiredChecksIsFlippable(t *testing.T) {
+	s := newStub()
+	s.rollup = nil
+	s.requiredChecks = nil // branch protection requires nothing → endpoint 404s
+	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitOK {
+		t.Fatalf("empty rollup + no required checks rc = %d, want %d (the flip must be allowed)",
+			rc, deskkit.ExitOK)
+	}
+	if !s.flipped() {
+		t.Errorf("the ready mutation never ran on a repo with no required checks: %v", s.requests)
+	}
+	if s.reqCheckReads == 0 {
+		t.Errorf("the required-status-checks endpoint was never read: %v", s.requests)
+	}
+}
+
+// Branch protection UNREADABLE (a permission/transport failure) is could-not-check, never
+// "nothing required": the flip stays refused. Fail-closed is the whole point of reading the
+// real required set rather than assuming.
+func TestEmptyRollupWithUnreadableProtectionIsUnverifiable(t *testing.T) {
+	s := newStub()
+	s.rollup = nil
+	s.requiredChecksErr = true // the required-status-checks read 500s
+	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitUnverifiable {
+		t.Fatalf("empty rollup + unreadable protection rc = %d, want %d", rc, deskkit.ExitUnverifiable)
+	}
+	if m := s.mutated(); len(m) != 0 {
+		t.Fatalf("flipped despite an unreadable required-check set: %v", m)
 	}
 }
 
