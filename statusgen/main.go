@@ -373,6 +373,16 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	offBoardProblems = append(offBoardProblems, darProblems...)
 	notices = append(notices, darNotices...)
 	problems = append(problems, attributionProblems(checkStreams)...)
+	// Verified-cell / Evidence-runner AGREEMENT (F-verify-self-attest family): a
+	// NOTICE per `verified`/`done` brief whose Verified cell credits a runner other
+	// than the actor who ran a strict majority of its own Evidence rows — the drift
+	// a legitimate Verify-table RE-RUN leaves behind when the register cell keeps
+	// naming the original verifier while the re-run stamped the Evidence with the
+	// shepherd's identity. NOTICE for the same reason as evidenceActorNotices above
+	// (a pre-check backlog, and a residual cross-namespace false-positive); it
+	// changes no exit code and weakens no verification-integrity assertion. Offline,
+	// tree-only. Declared source: statusgen/verifiedrunneragree.go.
+	notices = append(notices, verifiedRunnerDisagreementNotices(checkStreams)...)
 	problems = append(problems, verifySectionProblems(checkStreams)...)
 	// Reverse-orphan (distribution/13 Task E-a): a README brief ROW whose brief
 	// FILE is absent is a phantom brief. checkBriefFiles guards the forward
