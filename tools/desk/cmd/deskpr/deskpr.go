@@ -932,30 +932,12 @@ func requireTrailer(body []byte, root, dir string) (int, error) {
 // <cell>:<repo>:<stream>:<NN>. For the colon forms the LAST two parts are stream and NN;
 // the repo/cell prefixes resolve against graph-repos.yaml elsewhere (example-stream/01)
 // and are not needed for the file resolution here. NN must be numeric.
+//
+// It delegates to deskkit.SplitBriefTrailer so this writer-side validation and the
+// reader-side phantom key (RepresentedBriefs) apply ONE reduction and cannot disagree
+// on which trailer spelling names which brief.
 func splitBriefTrailer(v string) (stream, nn string, ok bool) {
-	var parts []string
-	if strings.Contains(v, ":") {
-		parts = strings.Split(v, ":")
-		if len(parts) < 2 {
-			return "", "", false
-		}
-		stream, nn = parts[len(parts)-2], parts[len(parts)-1]
-	} else {
-		parts = strings.Split(v, "/")
-		if len(parts) != 2 {
-			return "", "", false
-		}
-		stream, nn = parts[0], parts[1]
-	}
-	if stream == "" || nn == "" {
-		return "", "", false
-	}
-	for _, c := range nn {
-		if c < '0' || c > '9' {
-			return "", "", false
-		}
-	}
-	return stream, nn, true
+	return deskkit.SplitBriefTrailer(v)
 }
 
 func readBody(bodyFile, bodyMin string) ([]byte, error) {

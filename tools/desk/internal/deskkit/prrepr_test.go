@@ -46,6 +46,37 @@ func TestBriefRepresentedPR(t *testing.T) {
 	}
 }
 
+// TestRepresentedBriefsCanonicalizesColonForm is the regression guard for the phantom
+// double-dispatch a colon-form `Brief:` trailer could still cause. deskpr accepts BOTH
+// `Brief: <stream>/<NN>` and `Brief: <stream>:<NN>`, but the phantom check and the
+// fanoutloop exclusion look the brief up by its slash-form id (`<stream>/<NN>`). A PR
+// authored with the colon form must therefore key on the slash-form id, or its real
+// OPEN/MERGED PR is missed and a fresh worker is dispatched over it. This asserts every
+// consumer (the map, the number lookup, the set) matches the slash-form id against a
+// colon-form PR body.
+func TestRepresentedBriefsCanonicalizesColonForm(t *testing.T) {
+	prs := []PRRef{
+		{Number: 610, State: "OPEN", Body: "the work\n\nBrief: example-colon:07"},
+		{Number: 611, State: "MERGED", Body: "Brief: repo:example-prefixed:09"},
+	}
+
+	m := RepresentedBriefs(prs)
+	if got := m["example-colon/07"]; got != 610 {
+		t.Errorf("colon-form `Brief: example-colon:07` must key on the slash-form id example-colon/07: got %d, want 610 (map=%v)", got, m)
+	}
+	if got := m["example-prefixed/09"]; got != 611 {
+		t.Errorf("repo-prefixed colon form must reduce to its slash-form id example-prefixed/09: got %d, want 611 (map=%v)", got, m)
+	}
+
+	if n, ok := BriefRepresentedPR("example-colon/07", prs); !ok || n != 610 {
+		t.Errorf("BriefRepresentedPR(example-colon/07) = (%d,%v), want (610,true) — a colon-form PR must exclude its slash-form brief id", n, ok)
+	}
+
+	if set := RepresentedBriefSet(prs); !set["example-colon/07"] {
+		t.Errorf("RepresentedBriefSet missing the slash-form id of a colon-form PR: %v", set)
+	}
+}
+
 func TestParsePRList(t *testing.T) {
 	prs, err := ParsePRList([]byte(`[{"number":7,"state":"OPEN","body":"Brief: s/01"}]`))
 	if err != nil {

@@ -73,7 +73,12 @@ func RepresentedBriefs(prs []PRRef) map[string]int {
 			if t.Kind != TrailerBrief {
 				continue
 			}
-			id := strings.ToLower(strings.TrimSpace(t.Value))
+			// Canonicalize the trailer value to the slash-form brief id through the SAME
+			// reduction deskpr's create-time validation uses (SplitBriefTrailer). A PR
+			// authored with the accepted colon form (`Brief: <stream>:<NN>`) must key on
+			// `<stream>/<NN>` so it matches the plan's slash-form item id — otherwise a real
+			// OPEN/MERGED colon-form PR is missed and a fresh worker is dispatched over it.
+			id := CanonicalBriefID(t.Value)
 			if id == "" {
 				continue
 			}
