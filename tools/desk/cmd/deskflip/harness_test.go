@@ -598,8 +598,10 @@ func dispatcherLogin(t *testing.T) string {
 	return login
 }
 
-// strongStamp / cheapStamp build a complete dispatcher-applied tier attestation for a fixture
-// change. The applier is the roster dispatcher, so AttestedModelStampOf trusts it.
+// strongStamp / noClaimStamp build a complete dispatcher-applied tier attestation for a
+// fixture change. The applier is the roster dispatcher, so AttestedModelStampOf trusts it.
+// noClaimStamp's tier is `any` — a readable stamp that asserts NO strength, which is the
+// floor's NOTICE path rather than its refusal path.
 func strongStamp(t *testing.T) []deskkit.LabelEvent {
 	d := dispatcherLogin(t)
 	return []deskkit.LabelEvent{
@@ -608,7 +610,7 @@ func strongStamp(t *testing.T) []deskkit.LabelEvent {
 	}
 }
 
-func cheapStamp(t *testing.T) []deskkit.LabelEvent {
+func noClaimStamp(t *testing.T) []deskkit.LabelEvent {
 	d := dispatcherLogin(t)
 	return []deskkit.LabelEvent{
 		{Name: deskkit.DispatchedModelPrefix + "haiku-3", AppliedBy: d},
