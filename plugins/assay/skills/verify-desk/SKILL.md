@@ -95,6 +95,15 @@ run: fix the check it names, re-run, then claim. An open verify-gate wait is a w
 cross-repo is verified in the sibling checkout — read the set from `deskroster repos`, never a
 hardcoded list; an uncloned repo is **could-not-check** for that row, never a fail. Resync the
 sibling, run its rows there, record sibling repo + SHA in Evidence beside the in-repo row.
+**"Resync" means confirmed-current, not merely attempted**: `git -C <sibling> fetch origin` can
+fail silently (a rewritten remote, a dead credential) and leave the tree exactly as stale as
+before the fetch ran, and comparing the checkout's own `HEAD` to its own `origin/main` afterward
+proves nothing — a silently-stale fetch moves neither, so they still agree. Cross-check instead
+against an INDEPENDENT read of the same ref: `git -C <sibling> rev-parse origin/main` compared
+against `gh api repos/<owner>/<repo>/commits/main --jq .sha` (a different protocol, so a rewrite
+that misroutes the git fetch does not also misroute the API call). A mismatch this desk cannot
+resolve is could-not-check for that row, never a row run against whatever the tree happened to
+hold. The SHA recorded in Evidence is the one the cross-check confirmed, not the one requested.
 
 ## The verifier dispatch — the moat
 
