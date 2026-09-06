@@ -193,15 +193,67 @@ func TestPendingCheckIsUnverifiable(t *testing.T) {
 	}
 }
 
-// An EMPTY rollup on a CI-required repo means the checks have not reported — not green.
-func TestEmptyRollupOnCIRequiredRepoIsUnverifiable(t *testing.T) {
+// An EMPTY rollup when the base branch REQUIRES status checks means those checks have not
+// reported — not green. The gate keys on the ACTUAL required set (branch protection), not the
+// roster ci-tag, so this holds even on a ci-tagged repo: a non-empty required set + absent
+// rollup is could-not-verify.
+func TestEmptyRollupWithRequiredChecksIsUnverifiable(t *testing.T) {
 	s := newStub()
 	s.rollup = nil
+	s.requiredChecks = []string{"lint", "go-test"} // branch protection requires these
 	s.install(t)
 	s.reviews = approvalAtHead(t, headSHA)
 
 	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitUnverifiable {
-		t.Fatalf("empty rollup on a CI repo rc = %d, want %d", rc, deskkit.ExitUnverifiable)
+		t.Fatalf("empty rollup + required checks rc = %d, want %d", rc, deskkit.ExitUnverifiable)
+	}
+	if m := s.mutated(); len(m) != 0 {
+		t.Fatalf("flipped with required checks unreported: %v", m)
+	}
+	if s.reqCheckReads == 0 {
+		t.Errorf("the required-status-checks endpoint was never read — the gate did not key on the actual "+
+			"required set: %v", s.requests)
+	}
+}
+
+// The defect fix: a ci-tagged repo whose base branch requires NO status checks (App-authored
+// PRs run no CI, nothing is required to merge) must be FLIPPABLE on an absent rollup — the
+// absent rollup is everything there will ever be, and GitHub itself would merge it. Before the
+// fix this was unflippable forever because the roster ci-tag alone decided "CI required".
+func TestEmptyRollupWithNoRequiredChecksIsFlippable(t *testing.T) {
+	s := newStub()
+	s.rollup = nil
+	s.requiredChecks = nil // branch protection requires nothing → endpoint 404s
+	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitOK {
+		t.Fatalf("empty rollup + no required checks rc = %d, want %d (the flip must be allowed)",
+			rc, deskkit.ExitOK)
+	}
+	if !s.flipped() {
+		t.Errorf("the ready mutation never ran on a repo with no required checks: %v", s.requests)
+	}
+	if s.reqCheckReads == 0 {
+		t.Errorf("the required-status-checks endpoint was never read: %v", s.requests)
+	}
+}
+
+// Branch protection UNREADABLE (a permission/transport failure) is could-not-check, never
+// "nothing required": the flip stays refused. Fail-closed is the whole point of reading the
+// real required set rather than assuming.
+func TestEmptyRollupWithUnreadableProtectionIsUnverifiable(t *testing.T) {
+	s := newStub()
+	s.rollup = nil
+	s.requiredChecksErr = true // the required-status-checks read 500s
+	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitUnverifiable {
+		t.Fatalf("empty rollup + unreadable protection rc = %d, want %d", rc, deskkit.ExitUnverifiable)
+	}
+	if m := s.mutated(); len(m) != 0 {
+		t.Fatalf("flipped despite an unreadable required-check set: %v", m)
 	}
 }
 
@@ -411,6 +463,131 @@ func TestSecurityFailAtHeadBlocksEvenOnANonRiskClassedPR(t *testing.T) {
 	}
 	if m := s.mutated(); len(m) != 0 {
 		t.Fatalf("mutations over a standing security retraction: %v", m)
+	}
+}
+
+// #361 factor 1 — THE BUG THIS BRANCH EXISTS FOR. A `Security-Review: fail` is posted at
+// head A. A resync (a merge-from-main / any content-preserving re-trigger) then moves the
+// head to B while the flagged code is byte-identical — the fail's commit_id still reads A.
+// The fail is a retraction of the CODE, not of a commit sha, so it must STILL BLOCK at head
+// B: a bare head-sha change must not launder it. Before the fix, securityVerdictAtHead
+// skipped the fail on `r.CommitID != head` and the standing retraction flipped past.
+//
+// This runs on the NON-risk-classed private repo, so the ONLY thing that can block the flip
+// is the standing fail itself (rule 1) — the risk-classed pass requirement (rule 2) never
+// fires here, which is exactly what makes this a clean test of factor 1.
+func TestSecurityFailStandsAcrossAContentPreservingHeadMove(t *testing.T) {
+	const headA = "1111111122222222333333334444444455555555" // where the fail was posted
+	s := newStub()
+	s.install(t)
+	bot := reviewerBot(t)
+	// The correctness approval is at the CURRENT head (headSHA = head B): a resync re-runs the
+	// reviewer, so the approval is current — only the security fail predates the move.
+	approve := approvalAtHead(t, headSHA)
+	fail := reviewInfo{State: "COMMENTED", CommitID: headA, Body: "Security-Review: fail",
+		SubmittedAt: "2026-01-01T00:01:00Z"}
+	fail.User.Login = bot
+	s.reviews = append(approve, fail)
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitRefused {
+		t.Fatalf("standing fail after a content-preserving resync rc = %d, want %d — a head move that did "+
+			"not touch the flagged code must not launder the fail", rc, deskkit.ExitRefused)
+	}
+	if m := s.mutated(); len(m) != 0 {
+		t.Fatalf("a resync flipped a PR over a standing Security-Review: fail: %v", m)
+	}
+}
+
+// #361 — the clearing side: a GENUINE new `Security-Review: pass` AT THE CURRENT head clears
+// a standing fail, so the flip proceeds. This is the property that keeps the standing-fail
+// rule from being a one-way trap: a fail blocks until a reviewer re-reviews the current code
+// and passes it. A fail at an old head PLUS a pass at the current head reduces to a pass.
+func TestGenuineNewPassAtHeadClearsAStandingFail(t *testing.T) {
+	const headA = "1111111122222222333333334444444455555555"
+	s := newStub()
+	s.install(t)
+	bot := reviewerBot(t)
+	fail := reviewInfo{State: "COMMENTED", CommitID: headA, Body: "Security-Review: fail",
+		SubmittedAt: "2026-01-01T00:01:00Z"}
+	fail.User.Login = bot
+	pass := reviewInfo{State: "COMMENTED", CommitID: headSHA, Body: "Security-Review: pass",
+		SubmittedAt: "2026-01-01T00:02:00Z"} // the fresh pass at the CURRENT head
+	pass.User.Login = bot
+	// publicRepo is risk-classed, so this also exercises rule 2: the pass at head satisfies it.
+	s.reviews = append(approvalAtHead(t, headSHA), fail, pass)
+
+	if rc := run([]string{"7", "--repo", publicRepo}); rc != deskkit.ExitOK {
+		t.Fatalf("a fresh pass at head did not clear the standing fail: rc = %d, want 0", rc)
+	}
+	if !s.flipped() {
+		t.Error("the flip did not happen after a genuine new pass at head cleared the fail")
+	}
+}
+
+// #361 — a STALE pass does NOT clear a fail. A pass whose commit_id predates the current head
+// is not a re-review of the current code, so it neither stands as a pass nor clears a
+// standing fail. fail@A then pass@A, then a resync to head B: at B the pass is stale and the
+// fail still stands.
+func TestStalePassDoesNotClearAStandingFailAfterAResync(t *testing.T) {
+	const headA = "1111111122222222333333334444444455555555" // both verdicts posted here; head is now B
+	s := newStub()
+	s.install(t)
+	bot := reviewerBot(t)
+	fail := reviewInfo{State: "COMMENTED", CommitID: headA, Body: "Security-Review: fail",
+		SubmittedAt: "2026-01-01T00:01:00Z"}
+	fail.User.Login = bot
+	pass := reviewInfo{State: "COMMENTED", CommitID: headA, Body: "Security-Review: pass",
+		SubmittedAt: "2026-01-01T00:02:00Z"} // a pass, but at the OLD head — stale after the resync
+	pass.User.Login = bot
+	s.reviews = append(approvalAtHead(t, headSHA), fail, pass)
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitRefused {
+		t.Fatalf("a stale pass cleared a standing fail across a resync: rc = %d, want %d",
+			rc, deskkit.ExitRefused)
+	}
+	if m := s.mutated(); len(m) != 0 {
+		t.Fatalf("the PR flipped over a fail that only a STALE pass tried to clear: %v", m)
+	}
+}
+
+// #361 item 3 — risk classification by the security-surface LABEL, not path alone. A PR
+// carrying surface:core is risk-classed even when none of its changed paths hit the compiled
+// trigger set, so it needs a `Security-Review: pass` at head before it can flip. The private
+// repo here is not risk-classed on visibility, and greenFiles touches no trigger path — so
+// without the label term this PR would flip on the correctness review alone.
+func TestSurfaceCoreLabelRiskClassesEvenWithoutAPathTrigger(t *testing.T) {
+	// The label is ADDITIVE: with it and no security pass, the flip is refused.
+	s := newStub()
+	s.pr.Labels = []string{labelBeforeFlip, deskkit.SurfaceCoreLabel}
+	s.files = greenFiles()
+	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitRefused {
+		t.Fatalf("surface:core PR without a security pass rc = %d, want %d — the label risk-classes it",
+			rc, deskkit.ExitRefused)
+	}
+	if m := s.mutated(); len(m) != 0 {
+		t.Fatalf("a surface:core PR flipped with no security verdict: %v", m)
+	}
+
+	// The SAME PR with a pass at head flips — proving the label path demands exactly a pass,
+	// and does not simply brick a labelled PR.
+	s2 := newStub()
+	s2.pr.Labels = []string{labelBeforeFlip, deskkit.SurfaceCoreLabel}
+	s2.files = greenFiles()
+	s2.install(t)
+	bot := reviewerBot(t)
+	pass := reviewInfo{State: "COMMENTED", CommitID: headSHA, Body: "Security-Review: pass",
+		SubmittedAt: "2026-01-01T00:01:00Z"}
+	pass.User.Login = bot
+	s2.reviews = append(approvalAtHead(t, headSHA), pass)
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitOK {
+		t.Fatalf("surface:core PR WITH a security pass rc = %d, want 0", rc)
+	}
+	if !s2.flipped() {
+		t.Error("a surface:core PR with a security pass at head did not flip")
 	}
 }
 
