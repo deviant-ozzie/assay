@@ -45,19 +45,17 @@ _Held by per-stream caps: 4 brief(s) across 1 stream(s) — top: desk-tools. By 
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (41 desk-actionable of 43 total — 43 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (40 desk-actionable of 44 total — 44 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (41)
+### Desk-actionable (40)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
-| forge-neutral | 01 [exec:strong] | implemented | 7000 | 10 | — | — | — |
-| forge-neutral | 02 [exec:strong] | implemented | 4500 | 5 | — | — | — |
 | harness-portability | 01 [exec:strong] | implemented | 4500 | 7 | — | — | — |
 | desktools-go-git | 02 | implemented | 4000 | 6 | — | — | — |
 | derived-board | 03 [exec:strong] | implemented | 3500 | 3 | — | — | — |
@@ -66,6 +64,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 02 [exec:strong] | implemented | 3500 | 5 | — | — | — |
 | derived-board | 04 | implemented | 3000 | 2 | — | — | — |
 | desk-containers | 03 | implemented | 3000 | 4 | — | — | — |
+| forge-neutral | 03 [exec:strong] | implemented | 3000 | 2 | — | — | — |
 | harness-portability | 04 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | harness-portability | 05 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | windows-port | 00 | implemented | 3000 | 4 | — | — | — |
@@ -98,10 +97,12 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | statusgen | 06 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 09 | implemented | 1000 | 0 | — | — | — |
 
-### Awaiting human gate (1)
+### Awaiting human gate (3)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
+| forge-neutral | 01 [exec:strong] | implemented | 7000 | 10 | — | — | — |
+| forge-neutral | 02 [exec:strong] | implemented | 4500 | 5 | — | — | — |
 | harness-portability | 03 | implemented | 4000 | 6 | — | — | — |
 
 ### Awaiting implementer rework (1)
@@ -212,7 +213,7 @@ _None._
 
 - 01 Forge resolution contract — the forge comes from repo config, and refusal is the only fallback — implemented (wave 1)
 - 02 Forge-qualified identity — roster entries, bot renderings, review corroboration — implemented (wave 2)
-- 03 Write verbs A — deskpost, deskreply, deskflip onto the resolver — todo (wave 2)
+- 03 Write verbs A — deskpost, deskreply, deskflip onto the resolver — implemented (wave 2)
 - 04 Write verbs B — deskpr, deskfile, deskclose, deskevidence onto the resolver — todo (wave 2)
 - 05 Claim layer — the GitLab shape of `refs/dispatch/*` and its release — todo (wave 2)
 - 06 Read verbs — deskboard, issueboard, scanloop, reviewloop on the seam — todo (wave 3)

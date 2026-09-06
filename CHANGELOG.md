@@ -23,6 +23,79 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v0.27.0 — 2026-09-06
+
+### Added
+- **Windows is pinned, not deferred.** v0.26.0 is the first release to publish
+  `statusgen-windows-{amd64,arm64}.exe` and `desk-tools-windows-{amd64,arm64}.tar.gz`, so the
+  Windows arms of both the pairing manifest and the adopter scaffold carry real, published
+  sha256 values. The scaffold's two all-zero placeholder digests — which would have failed an
+  adopter's verification the moment a Windows install was attempted — are gone.
+- **`commsgw`** — the per-cell message gateway: the one chokepoint every
+  inbound cell message crosses. A deterministic pre-check pipeline (mTLS peer
+  accept, envelope parse-or-refuse, signed-assertion verify, lane ACL incl. the
+  cross-cell pair + verb allow-set, `Claim()` dedupe, per-sender rate/budget,
+  kill switch) runs identically for cross-cell traffic (an A2A JSON-RPC server
+  on the pinned `a2a-go` SDK, mTLS-fronted) and within-cell traffic (a loopback
+  Unix socket matching `deskcomms`'s existing client wire shape). Config-off by
+  default: every `ASSAY_COMMS_*` enable key is required, any one absent refuses
+  to serve. Accepted messages are durably queued (`internal/commsqueue`) for
+  `commsloop` to drain. On every accepted cross-cell message the gateway emits
+  one deskd inbox item of kind `cross-cell`; an emission failure quarantines
+  the message rather than dropping it.
+- **`commsloop`** — the paired drain consumer: the fifth implementation of the
+  frozen `loopengine.Loop` contract. Report-class messages (`status`,
+  `metrics`, `help-offered`) land done+journaled with no session ever fired;
+  everything else quarantines (held mailbox + a filed issue) pending the
+  prose router. An independent, second lane-ACL check at the routing boundary
+  (a different file from the gateway's own check) catches a message that
+  somehow bypassed the gateway's precheck.
+- `internal/comms/laneacl.yaml`'s `# OPEN DECISION` marker is replaced with a
+  public-safe citation of the cross-cell verb ruling (date + bare decision
+  record number only).
+- `isReportClass` (which verbs land immediately vs. await the prose router) is
+  a documented, reviewable judgment call pending that router's own arrival —
+  see `cmd/commsloop/routing.go`.
+
+### Fixed
+- A PR whose `dispatched-model:` / `dispatched-tier:` stamp was once applied by the wrong identity can now be repaired. The model-capability floor's applier-aware reader treated ANY historical `labeled` event for a stamp label as the applier — and a GitHub timeline is append-only, so that made a foreign stamp permanent: the bound dispatcher could remove both labels and re-apply them under its own App, and `deskpost review`, `deskpost ready` and `deskflip` still found the original event and refused the write, naming a login that no longer held the stamp. The reader now resolves, for each stamp label the PR CURRENTLY carries, the actor of the LAST `labeled` event not superseded by an `unlabeled` of the same name, so a genuine re-stamp is honoured. Nothing is laundered: a foreign stamp that is still standing, a re-stamp by a foreign login, and a dispatcher stamp later overwritten by one all still refuse. Presence now comes from the PR's labels rather than from the events, so a superseded label no longer contributes stamp content and a truncated timeline read can no longer make a standing stamp look ABSENT (the only state that proceeds) — a present label the events cannot attribute is could-not-check, with its own refusal wording. The floor was not loosened in any other direction.
+- The two known-key sets are now COUPLED rather than kept in step by comment. Both
+  modules' readers expose their set (`scanKnownRosterKeys` / `knownRosterKeys`), the
+  shared cross-tree vector file `statusgen/testdata/roster_coupling.json` declares the
+  schema once, and each module's `TestRosterKeySchemaCoupling` asserts its own set equals
+  that list exactly in BOTH directions. A key taught to one binary alone — or declared and
+  taught to neither — cannot stay green. The two trees are separate Go modules and share
+  no code, so the shared vector file is the binding a shared package cannot be.
+- `ASSAY_WITHHELD_IDENTIFIERS` is now read from `roster.env` as well as from the
+  environment, like every other `ASSAY_` key (environment first, roster second).
+  It was environment-only while the roster parser merely *recognised* the key, so a
+  house that configured its withheld register in `roster.env` — the documented home
+  of every other value — got `withheld register identifiers NOT CHECKED` on every
+  public write and the register category of the public-repo self-containment scan
+  never ran, unless each shell invoking `deskpr`/`deskpost` also exported the
+  variable. Unset in both sources is still a complete adopter configuration: the
+  category degrades to a notice, which now names both places it looked.
+- `deskdispatch`'s stamp step now REPLACES a foreign-applied stamp instead of no-opping on it. Labels are a set, so `--add-label` over an already-present label changed nothing and left the PR carrying the untrusted application; the step now removes each standing dispatched-* label it cannot attribute to the dispatcher, as the dispatcher, before applying its own — the removal and the re-application both logged in the step report.
+- `statusgen` now recognises every `ASSAY_` roster key the desk tools recognise
+  (`ASSAY_REPO_FORGES`, `ASSAY_RISK_CALLOUT`, `ASSAY_WITHHELD_IDENTIFIERS`,
+  `ASSAY_ALLOW_CLUSTER`), so a roster that the desk verbs REQUIRE no longer makes
+  `statusgen` report the whole trust roster unconfigured. Both binaries read the same
+  `roster.env` and both fail closed on an unrecognised key in the `ASSAY_` namespace —
+  correct for a typo, wrong for a sibling's key: while the two known-key sets disagreed,
+  `ASSAY_REPO_FORGES` (the only way `deskpost` / `deskpr` / `deskfile` resolve a repo to a
+  forge) made `statusgen --scan-issues` refuse fail-closed on every scan repo, and no
+  roster edit could satisfy both tools at once. The four keys are **recognised, not
+  applied**: `statusgen` consumes none of them, and the refusal for a genuinely unknown
+  `ASSAY_` key is unchanged.
+
+### Changed
+- The plugin's `paired-versions.yaml` is re-pinned to statusgen / desk-tools **v0.26.0** and
+  plugin **0.5.1** — both sides of the pairing move together, with every per-platform sha256
+  refreshed from the v0.26.0 release's own `checksums.txt` rather than edited in place.
+- `examples/adopter-scaffold/.assay-versions` moves off the long-stale `v0.9.1` pins to
+  **v0.26.0**, so the scaffold an adopter copies no longer illustrates a tool seventeen releases
+  behind the skills shipped beside it.
+
 ## v0.26.0 — 2026-09-05
 
 ### Added
