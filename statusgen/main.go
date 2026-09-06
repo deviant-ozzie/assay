@@ -187,6 +187,13 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	briefProblems, briefNotices := checkBriefFiles(checkStreams, edgeStreams)
 	problems = append(problems, briefProblems...)
 	notices = append(notices, briefNotices...)
+	// Split-flag conservation: a child brief may not carry a weaker gate/risk flag
+	// than the brief it was split from (splitflags.go). checkStreams is the scoped
+	// child set; edgeStreams resolves the parent even when scoping dropped its
+	// stream — the same split checkBriefFiles uses for depends:/unblocks:.
+	splitProblems, splitNotices := splitFlagProblems(checkStreams, edgeStreams)
+	problems = append(problems, splitProblems...)
+	notices = append(notices, splitNotices...)
 	// §8 spec/scoping-doc lifecycle lint (spec-routing/01, spec/lifecycle-v1.md §8):
 	// an approved/routed document missing `**Routes-to:**` is a hard PROBLEM (§8.3);
 	// an unclassified `**Status:**` first token is a NOTICE (§8.1); an approved
