@@ -397,16 +397,27 @@ unchanged; the invariant is isolation off `refs/remotes/origin/main`, one worktr
 item, and the cockpit is only a nicer way to reach it.
 
 - **Selection is by command presence on PATH, never a config flag someone must remember.** For
-  the worktree-create step of each dispatched item, resolve the FIRST that is present:
-  - `supacode` on PATH → `supacode repo worktree-new --branch <branch> --fetch` (it fetches for
-    you and opens a titled worktree in one command).
+  the worktree-create step of each dispatched item, resolve the FIRST that is present. Every path
+  spells the base in full as `refs/remotes/origin/main` — never the bare `origin/main`, which
+  resolves to a stray local branch of that name where one exists:
+  - `supacode` on PATH → `supacode repo worktree-new --branch <branch> --base
+    refs/remotes/origin/main --path ../<repo>-<item> --fetch` (it fetches for you and opens a
+    titled worktree in one command). Pin the base and the per-item path explicitly rather than
+    leaning on the cockpit's defaults; if the installed build accepts neither flag, do not use it
+    for the create step — fall through to the fallback rather than trust an unstated default base.
   - else `herdr` on PATH → `git -C <repo> fetch origin && herdr worktree create --cwd <repo>
-    --branch <branch> --base origin/main --path ../<repo>-<item> --label <item>` (it has no
-    `--fetch`, so fetch first, then it runs the `git worktree add` and opens a labelled
+    --branch <branch> --base refs/remotes/origin/main --path ../<repo>-<item> --label <item>` (it
+    has no `--fetch`, so fetch first, then it runs the `git worktree add` and opens a labelled
     workspace).
   - else the always-works fallback → `git fetch origin && git worktree add ../<repo>-<item> -b
-    <branch> refs/remotes/origin/main` (spell the remote ref in full — a bare `origin/main`
-    resolves to a stray local branch of that name where one exists).
+    <branch> refs/remotes/origin/main`.
+- **The base is verified after the create, not trusted from any tool's default.** Whichever path
+  cut the worktree, before the worker is dispatched confirm the new worktree sits at the
+  remote-tracking tip — `git -C ../<repo>-<item> rev-parse HEAD` must equal `git -C <repo>
+  rev-parse refs/remotes/origin/main` — and that it is the per-item `../<repo>-<item>` path (one
+  worktree per dispatched item, collision-free by construction). A cockpit whose base or path
+  cannot be pinned to that invariant is not used for the create step; the fallback is. This is the
+  isolation clause enforced, not merely asserted.
 - **Only the worktree-create step changes — nothing else forks.** The branch name, the
   `refs/remotes/origin/main` base, the claim key, the roster register, the decision gate, the
   model-stamp and the emitted worker kit are all identical; the desk still RUNS the dispatch verb
