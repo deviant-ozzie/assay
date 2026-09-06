@@ -117,7 +117,7 @@ func TestParseBriefTableMissingColumn(t *testing.T) {
 }
 
 // TestParseBriefTableDecoratedStatusShiftsColumns pins the recurring defect
-// from assay#82: a worker records the PR association IN the Status cell
+// from #82: a worker records the PR association IN the Status cell
 // (`implemented (#80)`) plus a stray `||`, prepending a cell and shifting every
 // column right. splitRow then yields more cells than the header. The parser must
 // REJECT the row (a count mismatch in either direction is malformed) with a

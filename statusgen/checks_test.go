@@ -35,7 +35,7 @@ func TestCheckCatchesProblems(t *testing.T) {
 	}
 }
 
-// TestInvalidStatusNamesTheFix pins the assay#82 remedy: when the Status cell
+// TestInvalidStatusNamesTheFix pins the #82 remedy: when the Status cell
 // carries a decorated value (a PR ref), the `invalid status` PROBLEM must name
 // the fix inline — a bare lifecycle token in the cell, the PR association in the
 // PR body / `Brief:` trailer — so the author does not have to re-derive it. It
