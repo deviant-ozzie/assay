@@ -47,6 +47,8 @@ never a fresh plain comment for this (`## Notes` is where the hand-off note belo
 
 Work in your **own worktree** (`capability:isolate-workspace`), never the shared checkout:
 
+> Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, and role/repo coverage — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
+
 ```bash
 git fetch origin <branch>:<branch>            # branch may not exist locally yet
 git worktree add ../pr-<N> <branch>           # or check the PR out inside your own worktree
