@@ -57,6 +57,33 @@ import (
 // with no configured humans there are no names to anchor on, so nothing is detected
 // (the mechanism ships public; the names are private adopter config).
 
+// citedHumanLogin resolves a name AS WRITTEN IN A CITATION to the GitHub login whose
+// artifacts corroborate it. A prose citation may name a human either by the
+// configured NAME (the ASSAY_HUMAN_LOGIN_MAP key, e.g. "alice") or directly by their
+// GitHub LOGIN (the map value, e.g. "alice-gh"); both must resolve, because both are
+// how a real authority gets cited and the check must not miss the login form. It
+// resolves in that order:
+//
+//   - name is a configured key      -> its mapped login (HumanLogin);
+//   - name is itself a mapped login -> that login (the citation named the account).
+//
+// An UNSET map resolves nothing (the strict-but-inert direction). This is a widening
+// of recognition ONLY: like HumanLogin it is consulted to ACCEPT a candidate as a
+// citation of a real human, never to grant authority — the corroboration still
+// requires that human's artifact on the cited issue/PR.
+func citedHumanLogin(name string) (login string, ok bool) {
+	n := strings.ToLower(strings.TrimSpace(name))
+	if l, found := HumanLogin(n); found {
+		return l, true
+	}
+	for _, l := range scanEffectiveConfig().HumanLogins {
+		if strings.EqualFold(l, n) {
+			return l, true
+		}
+	}
+	return "", false
+}
+
 // citationAcceptanceRe matches "<name> <acceptance-verb>" — a named actor asserted to
 // have accepted/approved/ruled/decided. The captured group 1 is the candidate name;
 // it is only treated as a citation once HumanLogin resolves it to a login.
@@ -155,8 +182,9 @@ func detectCitations(source, text string) []citation {
 		for _, h := range hits {
 			// Anchor: only a configured human's acceptance carries authority worth
 			// corroborating. An unresolved name is ordinary prose ("the tool
-			// approved…") and is deliberately ignored.
-			if _, known := HumanLogin(h.name); !known {
+			// approved…") and is deliberately ignored. The name may be the
+			// configured key OR the GitHub login itself (citedHumanLogin).
+			if _, known := citedHumanLogin(h.name); !known {
 				continue
 			}
 			out = append(out, citation{
@@ -280,7 +308,7 @@ type citationResult struct {
 func corroborateCitations(cits []citation, fetched map[string]*citedArtifact, prRepo string) []citationResult {
 	var results []citationResult
 	for _, c := range cits {
-		login, known := HumanLogin(c.Name)
+		login, known := citedHumanLogin(c.Name)
 		if !known {
 			// Should not happen (detectCitations already filtered), but keep the
 			// gate fail-closed rather than silently dropping.

@@ -110,6 +110,32 @@ func TestDetectCitations_AnchorsOnConfiguredHuman(t *testing.T) {
 	}
 }
 
+func TestCitedHumanLogin_ResolvesNameOrLogin(t *testing.T) {
+	// Fixture map: alex:ada. A citation may name the human by the configured NAME
+	// ("alex") or directly by the GitHub LOGIN ("ada"); both resolve to "ada".
+	if l, ok := citedHumanLogin("alex"); !ok || l != "ada" {
+		t.Errorf("citedHumanLogin(alex) = (%q,%v), want (ada,true)", l, ok)
+	}
+	if l, ok := citedHumanLogin("Ada"); !ok || l != "ada" {
+		t.Errorf("citedHumanLogin(Ada) = (%q,%v), want (ada,true) — the login form must resolve", l, ok)
+	}
+	if _, ok := citedHumanLogin("nobody"); ok {
+		t.Errorf("citedHumanLogin(nobody) resolved — an unconfigured name must not")
+	}
+}
+
+func TestDetectCitations_LoginForm(t *testing.T) {
+	// "per ada's ruling" names the LOGIN directly (the second live instance's shape),
+	// which is not a map KEY but IS a mapped login — it must still be detected.
+	cits := detectCitations("commit deadbee", "per ada's ruling ('option a is the way')")
+	if len(cits) != 1 {
+		t.Fatalf("got %d citations, want 1 (login-form citation): %+v", len(cits), cits)
+	}
+	if cits[0].Name != "ada" || cits[0].HasRef {
+		t.Errorf("citation = %+v, want name=ada hasRef=false (unlinked)", cits[0])
+	}
+}
+
 func TestCitationsInDiff_AddedLinesAndFixtureExclusion(t *testing.T) {
 	diff := `diff --git a/docs/package-rename-runbook.md b/docs/package-rename-runbook.md
 --- a/docs/package-rename-runbook.md
