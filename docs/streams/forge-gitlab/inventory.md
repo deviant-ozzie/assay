@@ -50,6 +50,24 @@ ticked without a case behind it.
 | 18 | `EditComment(repo, commentID, body)` | edit ONE existing comment | `deskreply` `--workpad` edit (GraphQL `updateIssueComment`, node id) | `PUT /merge_requests/:iid/notes/:id`; the opaque id is the backend-minted `gitlab:<owner>/<name>!<iid>#note<id>`, and a foreign or project-mismatched id is REFUSED rather than resolved | implemented |
 | 19 | `ApplyLabels(repo, number, change)` | reconcile a change's labels in one operation | `deskpost` `ensureLabel`+`listLabels`+`addLabels`+`removeLabel` (4 hand-built requests) / `deskflip` `ensureLabelSwap` (`gh pr edit --add-label/--remove-label`) | `POST /projects/:id/labels` to ensure (409/400 "already taken" = the ensure's post-condition already holds), then ONE `PUT /merge_requests/:iid` carrying `add_labels`+`remove_labels` — atomic, where the GitHub backend issues one DELETE per removal. Colors travel as bare hex and each backend renders its own form (GitHub forbids a leading `#`, GitLab requires one) | implemented |
 
+| 20 | `WriteFile(repo, in)` | write a file's whole content on a branch (Evidence landing) | `deskevidence` `commitFile` (`PUT /repos/{o}/{r}/contents/{path}`, base64, branch) | `POST`/`PUT /projects/:id/repository/files/:path` (Repository Files API); `start_branch` creates the side branch inline; the default branch is protected (pilot D-8) so a direct write to it returns the `DefaultBranchNotWritable` sentinel — nothing written, no write call | implemented |
+| 21 | `ReadFile(repo, in)` | read a file's content at a ref (Evidence merge) | `deskevidence` `fetchRemoteFile` (`GET /repos/{o}/{r}/contents/{path}?ref=`) | `GET /projects/:id/repository/files/:path?ref=`; `last_commit_id` → the opaque `FileContent.SHA` an update cites; a 404 propagates as a could-not-check the caller tests with `IsForgeNotFound` | implemented |
+
+**Ops 20–21 were added by brief `forge-neutral/04` under the same freeze rule**, with `deskevidence` as
+the consuming call site in the same change: it routes its Evidence write through `WriteFile` and its
+`--brief-path` Evidence-section merge (read → transform → write) through `ReadFile`, and drops its
+hand-rolled JWT/installation exchange + `apiBaseURL` — the mint moves to the resolver's custody binding
+(`ForgeFor(fr, "verifier")`). `WriteFile` is deliberately FAT: it folds the idempotency read (returning a
+`Changed` flag), the append-only shrink guard (`AppendOnly`/`AllowShrink` passed in, the backend refuses
+post-fetch), and the default-branch writability probe + inline branch-creation fallback, so the Evidence
+lane needs no separate `CreateRef` op on the frozen interface. The ratchet ceiling is UNCHANGED at 16:
+the forge-method count is not the ratchet, and no `deskevidence` permit row exists to remove (it reaches
+the forge over `net/http`, never a forge CLI). The `deskpr`/`deskfile`/`deskclose` gh-migration those
+tools' permit rows still gate is the FOLLOW-ON brief (`forge-neutral/04b`), which first adds the
+enumerated ops each still needs (branch→change lookup, PR body/title fields, an issue-search op, a
+label-list op) — see #509's ruling for why a code-aware rescope, not a ratchet-number correction, is
+what that work needs.
+
 **Ops 16–19 were added by brief `forge-neutral/03` under the same freeze rule**, each with its consuming
 call sites converted in the same change: 16 by `deskflip`'s model-capability-floor read and `deskpost`'s
 sibling; 17 and 18 by `deskreply`'s `--workpad` upsert; 19 by `deskflip`'s queue-label swap and
@@ -172,7 +190,8 @@ internal/deskkit/forge-gitlab-mutations.json` from `tools/desk`).
 
 ### github (brief 01)
 
-`forge_github_golden_test.go` (`TestForgeGithubGolden`) pins 17 operations — request
+`forge_github_golden_test.go` (`TestForgeGithubGolden`) pins one case per operation (plus the
+`read_file` / `write_file_*` cases added with the file ops) — request
 method/path/query, write bodies, pagination (`per_page=100`, multi-page walk, short-page stop),
 result mapping, and error classification (404 → `IsForgeNotFound`; 403 → `ForgeAPIError`).
 `TestForgeGithubGoldenCount` guards the floor (≥ 10). Regenerate on an INTENTIONAL change with
