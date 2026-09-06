@@ -384,6 +384,38 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
 - **Placeholders stay dispatchable** (ruling 2, 2026-08-24) — and the shipped `fanoutloop plan`
   includes them, so skill and binary now agree.
 
+## Cockpit-aware worktree creation — additive, detected on PATH, never required
+
+The per-item worktree the ceremony isolates is a plain
+`git worktree add ../<repo>-<item> -b <branch> refs/remotes/origin/main`, and that path is the
+default and stays fully supported on any terminal, any OS, with nothing installed. Where the
+operator runs a **cockpit** — a terminal shell that manages git worktrees and agent sessions —
+the same isolated worktree may be cut by the cockpit's own worktree verb instead: it performs the
+identical `git worktree add` underneath and adds a titled worktree plus a live agent-presence
+badge. This is **sugar on the same primitive, not a new requirement**. The methodology is
+unchanged; the invariant is isolation off `refs/remotes/origin/main`, one worktree per dispatched
+item, and the cockpit is only a nicer way to reach it.
+
+- **Selection is by command presence on PATH, never a config flag someone must remember.** For
+  the worktree-create step of each dispatched item, resolve the FIRST that is present:
+  - `supacode` on PATH → `supacode repo worktree-new --branch <branch> --fetch` (it fetches for
+    you and opens a titled worktree in one command).
+  - else `herdr` on PATH → `git -C <repo> fetch origin && herdr worktree create --cwd <repo>
+    --branch <branch> --base origin/main --path ../<repo>-<item> --label <item>` (it has no
+    `--fetch`, so fetch first, then it runs the `git worktree add` and opens a labelled
+    workspace).
+  - else the always-works fallback → `git fetch origin && git worktree add ../<repo>-<item> -b
+    <branch> refs/remotes/origin/main` (spell the remote ref in full — a bare `origin/main`
+    resolves to a stray local branch of that name where one exists).
+- **Only the worktree-create step changes — nothing else forks.** The branch name, the
+  `refs/remotes/origin/main` base, the claim key, the roster register, the decision gate, the
+  model-stamp and the emitted worker kit are all identical; the desk still RUNS the dispatch verb
+  and honours its exits. A cockpit is chosen only where its CLI is actually on PATH, so the same
+  skill drives a fanout whether or not either cockpit is installed.
+- **The fallback is not a degraded path.** An operator with no cockpit loses only the titled
+  worktree and the presence badge, never any isolation or correctness. Nothing in a brief, a loop
+  or this skill may require a cockpit to function.
+
 ## gate:human items dispatch normally — and file the decision issue at first dispatch
 
 `gate: human` / `irreversible: yes` items DISPATCH NORMALLY (2026-07-10): the gate binds APPROVAL —
