@@ -213,6 +213,47 @@ func TestStampReplacesAForeignAppliedStamp(t *testing.T) {
 	}
 }
 
+// THE PRESENT-BUT-UNREADABLE DEADLOCK. An earlier run of the DISPATCHER itself left a stale
+// dispatched-model half, so the PR carries two model slugs — a conflicting stamp the floor
+// reads as unreadable and refuses. Both halves the re-dispatch wants are already standing
+// under the dispatcher, so clearing only FOREIGN labels removes nothing and the conflict
+// survives: re-dispatch reports OK while every verdict on the PR keeps refusing. The re-stamp
+// must therefore drop the stale slug the dispatcher itself left, not just foreign labels.
+func TestStampClearsADispatcherAppliedConflictingStamp(t *testing.T) {
+	s := &stub{}
+	_, root := s.install(t)
+	plantScripts(t, root)
+	d := dispatcherAppLogin(t)
+	model := deskkit.DispatchedModelPrefix + "example-model-1"
+	staleModel := deskkit.DispatchedModelPrefix + "example-model-2"
+	tier := deskkit.DispatchedTierPrefix + "strong"
+	s.replies = stampReplies("/private/tmp/worker-home",
+		model+"\n"+staleModel+"\n"+tier+"\n",
+		"labeled\t"+model+"\t"+d+"\n"+
+			"labeled\t"+staleModel+"\t"+d+"\n"+
+			"labeled\t"+tier+"\t"+d+"\n")
+	stubMint(t, "example-installation-token", nil)
+
+	rc := run([]string{"item-1", "--root", root, "--repo", allowedRepo, "--pr", "77",
+		"--model", "example-model-1", "--tier", "strong",
+		"--prompt-file", filepath.Join(t.TempDir(), "p.md")})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("dispatch rc = %d, want 0", rc)
+	}
+	edit := "pr edit 77 -R " + allowedRepo + " "
+	if !s.ran(edit + "--remove-label " + staleModel) {
+		t.Errorf("the stale dispatcher-applied slug %s was not removed — the conflicting stamp survives "+
+			"and the floor keeps refusing: %v", staleModel, s.calls)
+	}
+	// The intended pair, already standing under the dispatcher, must NOT be churned.
+	if s.ran(edit + "--remove-label " + model) {
+		t.Errorf("the wanted model half was removed — re-stamp must not churn a correct standing label: %v", s.calls)
+	}
+	if s.ran(edit + "--remove-label " + tier) {
+		t.Errorf("the wanted tier half was removed — re-stamp must not churn a correct standing label: %v", s.calls)
+	}
+}
+
 // A stamp already standing under the DISPATCHER is left alone: no removal, no label churn on
 // every re-dispatch. Without this the step would remove and re-apply the labels on every run,
 // filling the timeline with noise and briefly leaving the PR unstamped.

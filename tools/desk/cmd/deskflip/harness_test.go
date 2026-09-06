@@ -107,6 +107,19 @@ type stub struct {
 	// checkTotalOverride, when non-zero, is the total_count the check-runs rollup ASSERTS
 	// regardless of how many it serves — a forge that claims more than it hands over.
 	checkTotalOverride int
+
+	// requiredChecks is the branch-protection required-status-check set the fake forge serves
+	// at the required_status_checks endpoint. nil serves a 404 — GitHub's answer for a branch
+	// with no protection / no required checks, which the backend reads as the EMPTY set
+	// (nothing required). A non-empty slice serves those contexts as required. It is only ever
+	// consulted on the empty-rollup path, where deskflip has to tell "nothing is required"
+	// from "the required checks have not reported".
+	requiredChecks []string
+	// requiredChecksErr makes the required_status_checks endpoint answer 500 — the
+	// could-not-check case (a permission/transport failure), which must keep the flip refused
+	// rather than assume nothing is required.
+	requiredChecksErr bool
+	reqCheckReads     int
 }
 
 const stubToken = "stub-installation-token"
@@ -210,6 +223,18 @@ func (s *stub) handle(t *testing.T) http.HandlerFunc {
 			s.fileReads++
 			enc(s.servedFilePage(r.URL.Query().Get("page")))
 
+		case strings.HasSuffix(path, "/required_status_checks"):
+			s.reqCheckReads++
+			if s.requiredChecksErr {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			if s.requiredChecks == nil {
+				w.WriteHeader(http.StatusNotFound) // no protection / none required
+				return
+			}
+			enc(map[string]any{"contexts": s.requiredChecks})
+
 		case strings.HasSuffix(path, "/status"):
 			enc(s.servedStatuses())
 
@@ -266,6 +291,7 @@ func (s *stub) servedPR() map[string]any {
 		"node_id": s.pr.NodeID, "changed_files": s.pr.ChangedFiles,
 		"user":   map[string]any{"login": "worker[bot]", "id": 99},
 		"head":   map[string]any{"sha": head, "ref": "feat/x"},
+		"base":   map[string]any{"ref": "main"},
 		"labels": labels,
 	}
 	switch s.pr.Mergeable {
@@ -598,8 +624,10 @@ func dispatcherLogin(t *testing.T) string {
 	return login
 }
 
-// strongStamp / cheapStamp build a complete dispatcher-applied tier attestation for a fixture
-// change. The applier is the roster dispatcher, so AttestedModelStampOf trusts it.
+// strongStamp / noClaimStamp build a complete dispatcher-applied tier attestation for a
+// fixture change. The applier is the roster dispatcher, so AttestedModelStampOf trusts it.
+// noClaimStamp's tier is `any` — a readable stamp that asserts NO strength, which is the
+// floor's NOTICE path rather than its refusal path.
 func strongStamp(t *testing.T) []deskkit.LabelEvent {
 	d := dispatcherLogin(t)
 	return []deskkit.LabelEvent{
@@ -608,7 +636,7 @@ func strongStamp(t *testing.T) []deskkit.LabelEvent {
 	}
 }
 
-func cheapStamp(t *testing.T) []deskkit.LabelEvent {
+func noClaimStamp(t *testing.T) []deskkit.LabelEvent {
 	d := dispatcherLogin(t)
 	return []deskkit.LabelEvent{
 		{Name: deskkit.DispatchedModelPrefix + "haiku-3", AppliedBy: d},

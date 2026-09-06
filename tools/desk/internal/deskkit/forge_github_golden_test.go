@@ -51,6 +51,7 @@ type goldenServer struct {
 	files      []map[string]any
 	status     map[string]any
 	checks     map[string]any
+	reqChecks  map[string]any
 	reactions  []map[string]any
 	pull       map[string]any
 	issue      map[string]any
@@ -80,6 +81,7 @@ var (
 	gIssueRoot = regexp.MustCompile(`^/repos/[^/]+/[^/]+/issues$`)
 	gStatus    = regexp.MustCompile(`/commits/[^/]+/status$`)
 	gChecks    = regexp.MustCompile(`/commits/[^/]+/check-runs$`)
+	gReqChecks = regexp.MustCompile(`/branches/[^/]+/protection/required_status_checks$`)
 	gRepo      = regexp.MustCompile(`^/repos/[^/]+/[^/]+$`)
 	gReactions = regexp.MustCompile(`/issues/[0-9]+/reactions$`)
 	gGitRef    = regexp.MustCompile(`^/repos/[^/]+/[^/]+/git/refs/.+$`)
@@ -169,6 +171,15 @@ func (s *goldenServer) handler(w http.ResponseWriter, r *http.Request) {
 		enc(s.status)
 	case r.Method == http.MethodGet && gChecks.MatchString(path):
 		enc(s.checks)
+	case r.Method == http.MethodGet && gReqChecks.MatchString(path):
+		// A branch with no protection (or no required checks) answers 404 — the "nothing
+		// required" case, distinct from a served object. A case that wants the 404 sets it via
+		// forceStatus; a nil reqChecks here also 404s, matching an unprotected branch.
+		if s.reqChecks == nil {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		enc(s.reqChecks)
 	case r.Method == http.MethodGet && gPull.MatchString(path):
 		enc(s.pull)
 	case r.Method == http.MethodPost && gPullsRoot.MatchString(path):
@@ -252,6 +263,7 @@ func TestForgeGithubGolden(t *testing.T) {
 					"changed_files": 3,
 					"user":          map[string]any{"login": "worker[bot]", "id": 99},
 					"head":          map[string]any{"sha": "abc123", "ref": "feat/x"},
+					"base":          map[string]any{"ref": "main"},
 					"html_url":      "https://example/pull/7",
 					"labels":        []map[string]any{{"name": "authorization-needed"}},
 					"mergeable":     true,
@@ -347,6 +359,30 @@ func TestForgeGithubGolden(t *testing.T) {
 						"started_at": "2026-08-24T00:00:00Z", "completed_at": "2026-08-24T00:05:00Z"}}}
 			},
 			run: func(f *GitHubForge) (any, error) { return f.ChecksAtHead(forgeTestRepo, "abc123") },
+		},
+		{
+			// Branch protection with required checks in BOTH shapes GitHub serves: the legacy
+			// flat `contexts` list and the newer `checks` array. The two are unioned, and a
+			// context named in both (go-test) appears once.
+			name: "required_status_checks",
+			setup: func(s *goldenServer) {
+				s.reqChecks = map[string]any{
+					"contexts": []string{"lint", "go-test"},
+					"checks": []map[string]any{
+						{"context": "go-test"}, {"context": "leak-sweep"},
+					},
+				}
+			},
+			run: func(f *GitHubForge) (any, error) { return f.RequiredStatusChecks(forgeTestRepo, "main") },
+		},
+		{
+			// An unprotected branch (or one requiring no checks) answers 404, which the backend
+			// reads as the EMPTY required set — nothing required, no error.
+			name: "required_status_checks_unprotected_branch",
+			setup: func(s *goldenServer) {
+				s.forceStatus["/required_status_checks"] = http.StatusNotFound
+			},
+			run: func(f *GitHubForge) (any, error) { return f.RequiredStatusChecks(forgeTestRepo, "main") },
 		},
 		{
 			name: "issue_reactions",

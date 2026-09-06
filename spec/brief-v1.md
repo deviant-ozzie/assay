@@ -71,6 +71,7 @@ validated against the value set given.
 | `satisfies` | array[string] | OPTIONAL | The requirements this brief was written against, as requirement references — `REQ-<slug>` in-repo, or `<alias>:REQ-<slug>` cross-repo through the `docs/streams/graph-repos.yaml` alias registry (`registers-v1.md` §6.5). Absence MUST NEVER be flagged on any brief. A present entry that does not match the grammar MUST be flagged; a wrong TYPE is a parse error. A conforming linter MUST emit a NOTICE for a brief carrying the key. The citation feeds the corpus-wide traceability checks §6.5 defines: a `satisfies:` naming an in-repo requirement that does not exist is a `dangling-satisfies` PROBLEM, and a forward brief in a `traced:` stream that cites nothing is an advisory `untraced-brief` NOTICE (§3.3). |
 | `design` | string | CONDITIONAL | The design-decision record this brief was approved against, as a typed reference `DR-<slug>` into the DECISIONS register (`registers-v1.md` §7). REQUIRED for a **risk-gated** brief in the design-approval gate's scope (`lifecycle-v1.md` §4.4) once it is at `in-progress` or later; OPTIONAL — and never flagged when absent — otherwise. A present value that is not a valid `DR-<slug>` reference, or that dereferences to no record in the register, MUST be flagged; a wrong TYPE is a parse error. The gate is grandfathered (§4.4), so absence is flagged only for briefs in the gate's live scope, never for grandfathered legacy briefs. |
 | `parallel-streams` | array[mapping] | OPTIONAL | Declared shards of an intra-brief split. Each entry is a mapping with a REQUIRED `name` (string) and an OPTIONAL `files` (array of path globs the shard owns); no other key is permitted in an entry. Absent means one worker per brief. Only the entry SHAPE is validated in frontmatter — whether a declared split may actually be dispatched is decided by `statusgen shardcheck` against the file tree, not by the frontmatter linter. A declaration that parses is a request, not a permission. |
+| `split-from` | string | OPTIONAL | The `<stream>/<NN>` id of the brief this brief was split off from — the explicit parent for the split-flag conservation gate (§3.4), used when the parentage is NOT encoded in the numbering (a split across streams, or a renumbered child). Absent means the brief is not a declared split child. A value that is not a `<stream>/<NN>` in-repo brief reference, or that names the brief itself, MUST be flagged; a wrong TYPE is a parse error. A value that does not resolve to a brief in the tree is a `could-not-check` NOTICE (the parent may have been retired in the same change), never a silent pass. |
 
 ### 3.3 Frontmatter linter requirements
 
@@ -115,6 +116,39 @@ advisory-first, per §4.5):
   that predate the register is noise (§4.5).
 
 The companion `orphan-requirement` advisory check lives on the register side (§6.5).
+
+### 3.4 Split-flag conservation
+
+Splitting a brief is authoring, and a split MUST NOT downgrade risk. A brief that is a
+split child MUST carry, for `gate` and for each of the four canonical `risk` answers, a flag
+at least as strict/high as the brief it was split from:
+
+```
+gate  = the stricter of (parent, child)   — human >= model
+risk  = MAX(parent, child) per key        — yes >= no, for each of
+        regulatory, customer, irreversible, sensitive-data
+```
+
+A child that is STRICTER than its parent (an escalation) is always conforming and MUST NOT
+be flagged; only a WEAKER flag is a downgrade. A conforming linter MUST flag a downgrade as a
+hard PROBLEM. The rule fails safe toward more gating — because risk is a property of what a
+change DOES, not of the size of its diff, the small "mechanical" child of a split is exactly
+where a human gate is most likely to be dropped.
+
+The parent is resolved from whichever signal is present:
+
+- **Numeric-stem lineage** — the split convention `02` → `02a`, `02b`, `02c`: a lettered
+  shard shares the numeric stem of the brief it came from. When the un-lettered parent
+  (`02`) is present it IS the floor. When the parent was retired in the same change, the
+  strictest SIBLING shard stands in as the floor, so a downgraded shard is still caught by a
+  faithful one.
+- **A declared `split-from`** (§3.2) — the explicit parent, for lineage the numbering does
+  not encode. A `split-from` that does not resolve in the tree is a `could-not-check` NOTICE,
+  never a silent pass.
+
+This is a conservation check, not an authorization one: it never licenses lowering a flag,
+and a genuinely clean split whose risky work all went to a sibling conserves by keeping the
+child's flags UP, not down.
 
 ## 4. Body structure
 

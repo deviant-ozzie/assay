@@ -32,7 +32,10 @@ func strongStampBy(applier string) []deskkit.LabelEvent {
 	}
 }
 
-func cheapStampBy(applier string) []deskkit.LabelEvent {
+// noClaimStampBy is a complete, readable stamp whose tier is `any` — an attestation of
+// DISPATCH that asserts NO strength. It is the floor's NOTICE subject, not its refusal
+// subject.
+func noClaimStampBy(applier string) []deskkit.LabelEvent {
 	return []deskkit.LabelEvent{
 		{Name: deskkit.DispatchedModelPrefix + "haiku-3", AppliedBy: applier},
 		{Name: deskkit.DispatchedTierPrefix + "any", AppliedBy: applier},
@@ -90,21 +93,25 @@ func TestModelFloorReviewStrongStampPosts(t *testing.T) {
 	}
 }
 
-// CASE cheap (NEGATIVE PATH): an attested below-tier dispatch is REFUSED with remediation,
-// and NOTHING is posted.
-func TestModelFloorReviewCheapStampRefused(t *testing.T) {
+// CASE `any`: a dispatcher-applied stamp whose tier is `any` asserts NO strength — the brief
+// schema's "no particular runner demanded" — so the verdict proceeds on the floor's NOTICE
+// path, and the NOTICE names the label so it is distinguishable from an unstamped PR's.
+func TestModelFloorReviewTierAnyProceedsWithNotice(t *testing.T) {
 	f, errBuf := setupFake(t)
-	f.stamp(cheapStampBy(deskDispatcherLogin(t))...)
+	f.stamp(noClaimStampBy(deskDispatcherLogin(t))...)
 	bf := writeBody(t, "rev.md", okReviewBody)
 
-	if code := run(reviewArgs(exampleRepo, "1", "approve", testHead, bf)); code != deskkit.ExitRefused {
-		t.Fatalf("attested-cheap verdict exit = %d, want %d (refused)", code, deskkit.ExitRefused)
+	if code := run(reviewArgs(exampleRepo, "1", "approve", testHead, bf)); code != 0 {
+		t.Fatalf("tier-any verdict exit = %d, want 0 (`any` is not a strength claim):\n%s", code, errBuf.String())
 	}
-	if f.postedReview != 0 {
-		t.Fatal("a below-tier session posted a verdict")
+	if f.postedReview != 1 {
+		t.Fatalf("postedReview = %d, want 1 — a tier-any lane must not be bricked", f.postedReview)
 	}
-	if !strings.Contains(errBuf.String(), "strong-tier session") || !strings.Contains(errBuf.String(), "delegation downward") {
-		t.Fatalf("refusal lacks the remediation:\n%s", errBuf.String())
+	if !strings.Contains(errBuf.String(), "NOTICE") {
+		t.Fatalf("a tier-any PR produced no NOTICE:\n%s", errBuf.String())
+	}
+	if !strings.Contains(errBuf.String(), deskkit.DispatchedTierPrefix+"any") {
+		t.Fatalf("the NOTICE does not name the label it read:\n%s", errBuf.String())
 	}
 }
 
@@ -125,11 +132,11 @@ func TestModelFloorReviewAbsentProceedsWithNotice(t *testing.T) {
 	}
 }
 
-// CASE override: the env override proceeds past the floor on the SAME cheap stamp that would
-// otherwise refuse, and the bypass carries the loud grep-able marker.
+// CASE override: the env override short-circuits the floor before the stamp state is
+// examined at all, and the bypass carries the loud grep-able marker.
 func TestModelFloorReviewOverrideProceedsLoudly(t *testing.T) {
 	f, errBuf := setupFake(t)
-	f.stamp(cheapStampBy(deskDispatcherLogin(t))...)
+	f.stamp(noClaimStampBy(deskDispatcherLogin(t))...)
 	t.Setenv(deskkit.ModelFloorOverrideEnv, "1")
 	bf := writeBody(t, "rev.md", okReviewBody)
 
@@ -195,22 +202,26 @@ func TestModelFloorReadyStrongStampFlips(t *testing.T) {
 	}
 }
 
-// CASE cheap (NEGATIVE PATH): an attested below-tier dispatch is REFUSED at the App-identity
-// flip verb too, with remediation, and NOTHING is flipped.
-func TestModelFloorReadyCheapStampRefused(t *testing.T) {
+// CASE `any`: the App-identity flip verb reaches the same NOTICE outcome as the verdict verb
+// — the floor decision has ONE home, and this row is what proves the two verbs did not drift
+// apart on it.
+func TestModelFloorReadyTierAnyProceedsWithNotice(t *testing.T) {
 	f, errBuf := setupFake(t)
 	f.reviews = []reviewInfo{appReview("APPROVED", testHead, okReviewBody)}
 	f.status = greenStatus()
-	f.stamp(cheapStampBy(deskDispatcherLogin(t))...)
+	f.stamp(noClaimStampBy(deskDispatcherLogin(t))...)
 
-	if code := run(readyArgs(exampleRepo)); code != deskkit.ExitRefused {
-		t.Fatalf("attested-cheap ready exit = %d, want %d (refused) — the flip floor is bypassable via deskpost ready", code, deskkit.ExitRefused)
+	if code := run(readyArgs(exampleRepo)); code != 0 {
+		t.Fatalf("tier-any ready exit = %d, want 0 (`any` is not a strength claim):\n%s", code, errBuf.String())
 	}
-	if f.flips != 0 {
-		t.Fatal("a below-tier session flipped a PR through deskpost ready")
+	if f.flips != 1 {
+		t.Fatalf("flips = %d, want 1 — a tier-any lane must not be bricked", f.flips)
 	}
-	if !strings.Contains(errBuf.String(), "strong-tier session") || !strings.Contains(errBuf.String(), "delegation downward") {
-		t.Fatalf("ready refusal lacks the remediation:\n%s", errBuf.String())
+	if !strings.Contains(errBuf.String(), "NOTICE") {
+		t.Fatalf("a tier-any ready produced no NOTICE:\n%s", errBuf.String())
+	}
+	if !strings.Contains(errBuf.String(), deskkit.DispatchedTierPrefix+"any") {
+		t.Fatalf("the NOTICE does not name the label it read:\n%s", errBuf.String())
 	}
 }
 
@@ -232,13 +243,13 @@ func TestModelFloorReadyAbsentProceedsWithNotice(t *testing.T) {
 	}
 }
 
-// CASE override: the env override proceeds past the ready floor on the SAME cheap stamp that
-// would otherwise refuse, and the bypass carries the loud grep-able marker.
+// CASE override: the env override short-circuits the ready floor the same way, and the
+// bypass carries the loud grep-able marker.
 func TestModelFloorReadyOverrideProceedsLoudly(t *testing.T) {
 	f, errBuf := setupFake(t)
 	f.reviews = []reviewInfo{appReview("APPROVED", testHead, okReviewBody)}
 	f.status = greenStatus()
-	f.stamp(cheapStampBy(deskDispatcherLogin(t))...)
+	f.stamp(noClaimStampBy(deskDispatcherLogin(t))...)
 	t.Setenv(deskkit.ModelFloorOverrideEnv, "1")
 
 	if code := run(readyArgs(exampleRepo)); code != 0 {

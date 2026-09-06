@@ -142,17 +142,17 @@ type verdictArgs struct {
 
 // parseVerdictArgs parses the argument shape both verdict verbs share:
 //
-//	deskpost <verb> <owner/repo> <pr> --verdict <values> --head <full-40-char-sha> --body-file F
+//	deskpost <verb> <owner/repo> <pr> --verdict <values> --head <full-40-or-64-char-sha> --body-file F
 //
 // It returns ok=false with the exit code to use. --head is REQUIRED and must be the FULL
-// 40-char SHA on both verbs — an abbreviated one is a form error, not a head mismatch
+// 40- (or 64-) char SHA on both verbs — an abbreviated one is a form error, not a head mismatch
 // (#214): the two call for opposite responses, and a verdict that lands on a commit the
 // reviewer did not read is the failure the flag exists to prevent (#197).
 func parseVerdictArgs(verb, verdictValues string, argv []string) (verdictArgs, int, bool) {
 	var a verdictArgs
 	rest := argv[1:]
 	if len(rest) < 2 {
-		fmt.Fprintf(stderr, "usage: deskpost %s <owner/repo> <pr> --verdict %s --head <full-40-char-sha> --body-file F\n",
+		fmt.Fprintf(stderr, "usage: deskpost %s <owner/repo> <pr> --verdict %s --head <full-40-or-64-char-sha> --body-file F\n",
 			verb, verdictValues)
 		return a, 2, false
 	}
@@ -169,7 +169,7 @@ func parseVerdictArgs(verb, verdictValues string, argv []string) (verdictArgs, i
 	fs := flag.NewFlagSet(verb, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	verdict := fs.String("verdict", "", verdictValues)
-	head := fs.String("head", "", "the reviewed head SHA — FULL 40-char lowercase hex, not abbreviated (required)")
+	head := fs.String("head", "", "the reviewed head SHA — FULL 40- (or 64-) char lowercase hex, not abbreviated (required)")
 	bodyFile := fs.String("body-file", "", "path to the review body file (required)")
 	raw := addPostFlags(fs)
 	if err := fs.Parse(rest[2:]); err != nil {
@@ -323,7 +323,7 @@ func cmdComment(argv []string) int {
 	// guaranteed nothing: it would have stamped the new head identically had the push been
 	// real work, and a head-pinned claim recorded against a commit nobody read is the same
 	// defect #197 closed on the review path.
-	head := fs.String("head", "", "assert the PR head the comment was written against — FULL 40-char "+
+	head := fs.String("head", "", "assert the PR head the comment was written against — FULL 40- (or 64-) char "+
 		"lowercase hex; refuses if the head has moved (optional; not valid on an issue)")
 	raw := addPostFlags(fs)
 	if err := fs.Parse(rest[2:]); err != nil {
@@ -398,9 +398,9 @@ func usage() {
 	fmt.Fprint(stderr, `deskpost — post the reviewer App's verdict / comment / ready-flip
 
 usage:
-  deskpost review          <owner/repo> <pr>     --verdict approve|request-changes --head <full-40-char-sha> --body-file F
-  deskpost security-review <owner/repo> <pr>     --verdict pass|fail              --head <full-40-char-sha> --body-file F
-  deskpost comment         <owner/repo> <number> --body-file F [--head <full-40-char-sha>]
+  deskpost review          <owner/repo> <pr>     --verdict approve|request-changes --head <full-40-or-64-char-sha> --body-file F
+  deskpost security-review <owner/repo> <pr>     --verdict pass|fail              --head <full-40-or-64-char-sha> --body-file F
+  deskpost comment         <owner/repo> <number> --body-file F [--head <full-40-or-64-char-sha>]
   deskpost ready           <owner/repo> <pr>
   deskpost version
 
