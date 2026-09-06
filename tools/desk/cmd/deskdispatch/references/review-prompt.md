@@ -172,6 +172,21 @@ Do NOT flag a legitimate `blocked` cell as invalid: it is an accepted value.
 - An APPROVED that immediately follows a CHANGES_REQUESTED at the SAME commit, with no
   push in between, cannot be a re-verification — there is nothing new to verify. Do not
   post one; the flip gate refuses it.
+- ONE EXEMPTION, and only this one: when the only thing that changed since the
+  CHANGES_REQUESTED is a LABEL, and that label turned a REQUIRED CHECK green, a same-head
+  re-approve IS a re-verification — of a condition that was genuinely unsatisfied when the
+  block was written and is satisfied now. The premise of the rule above is that nothing
+  changed; here something did, and it is simply not something a head sha can carry (a
+  label moves no head, which is exactly why the sha looks unchanged). Post it, and say so
+  IN THE BODY: name the label, name the check it greened, and state that the diff is
+  byte-identical to the one reviewed. Without those three facts the review is
+  indistinguishable from the no-op the rule above forbids, and should be read as one.
+  The exemption covers a re-approve whose ONLY basis is the label; a finding about the
+  code still stands until the code changes, and no label clears it.
+  Know what this does and does not unblock: the flip gate compares head shas, so it still
+  reads the re-approve as same-head and still refuses on its own terms. The re-approve
+  records the correct verdict on the PR; clearing the standing rejection for the flip
+  remains with whoever owns that gate.
 - Findings first, scope second: re-read the PR's reviews before and after every push you
   make to it.
 - Escalate per the common kit's escalate-durably rule: anything the loop cannot resolve
