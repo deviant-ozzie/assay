@@ -646,6 +646,19 @@ func checkSecurityVerdict(o flipOpts, repo string, pr prInfo, files []fileInfo, 
 		riskClassed = true
 		reason = "carries the " + deskkit.SurfaceCoreLabel + " security-surface label"
 	}
+	// The owning brief's OWN declaration is a risk term (only widens, like the label above):
+	// a PR delivering a `gate: human` / `risk: … yes` brief is risk-classed even when its
+	// changed paths hit no compiled trigger, because the sensitivity is declared in the brief
+	// rather than in a touched path. A brief that is DECLARED (a `Brief:` trailer is present)
+	// but cannot be resolved or read is UNVERIFIABLE, not clean — it too risk-classes, fail
+	// closed, so a declared brief we could not read cannot flip past the gate. Only a body
+	// with NO `Brief:` trailer leaves this term silent and the path/visibility terms deciding.
+	if !riskClassed {
+		if br := deskkit.BriefRiskFromBody(repo, pr.Body); br.RiskClassed {
+			riskClassed = true
+			reason = br.Reason
+		}
+	}
 	if !riskClassed {
 		// Reconcile the files walk against the forge's OWN count. A walk that stopped
 		// early otherwise believes it saw the whole diff — pad the PR with enough files
@@ -865,6 +878,10 @@ type prInfo struct {
 	BaseRef      string
 	ChangedFiles int
 	Labels       []labelInfo
+	// Body is the change description, carrying the one link trailer. The security lane
+	// resolves the owning brief from it and consults the brief's own gate/risk frontmatter
+	// as an additive risk-classification term (checkSecurityVerdict).
+	Body string
 
 	change *deskkit.PullRequest
 }
@@ -1001,6 +1018,7 @@ func readPR(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo) (prInfo, error) 
 		BaseRef:      ch.BaseRef,
 		ChangedFiles: ch.ChangedFiles,
 		Labels:       labels,
+		Body:         ch.Body,
 		change:       ch,
 	}, nil
 }

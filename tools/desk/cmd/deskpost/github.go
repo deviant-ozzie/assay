@@ -22,14 +22,24 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// apiBaseURL is the GitHub API/GraphQL base. It is overridable ONLY from in-package
-// tests (a fake httptest server); there is deliberately NO env var or flag override — a
-// production override could redirect the App-token mint or a review-post to an attacker.
-// This is the same test-hook shape deskkit uses for its desk-tools directory.
-// The host literal is sourced from deskkit.GitHubAPIBase (the forge module) so it is never
-// constructed in a cmd package (the forge-abstraction seam); the var is kept so in-package tests can
-// still point it at a fake server.
-var apiBaseURL = deskkit.GitHubAPIBase
+// forgeAPIBase is a TEST-ONLY override of the API base deskpost's REST reads and its
+// App-token mint are pointed at. It is EMPTY in production, which means "the forge module's
+// own default" (deskkit.GitHubBaseURLOrDefault → deskkit.GitHubAPIBase) — so this verb binds
+// no forge host literal of its own anywhere, exactly like deskflip's `forgeAPIBase`. There is
+// deliberately NO env var or flag override: a production override could redirect the
+// App-token mint or a review-post at an attacker. In-package tests point it at a fake
+// httptest server (harness_test.go).
+//
+// The custody minter this file installs on deskkit.ForgeFor (init, below) returns this same
+// empty override, so the resolved forge's writes (comment/label posting) share the one seam:
+// the resolver applies the default the same way GitHubForge.baseURL() does.
+var forgeAPIBase string
+
+// ghAPIBase resolves the effective REST/GraphQL host for deskpost's own raw reads. It reads
+// forgeAPIBase at CALL TIME (never cached at init), so a per-test override still reaches
+// every request, and it resolves the empty production override through the forge module so
+// the concrete host literal is never constructed in this cmd package.
+func ghAPIBase() string { return deskkit.GitHubBaseURLOrDefault(forgeAPIBase) }
 
 // reviewerBotLogin() is the reviewer App's bot identity — the unforgeable distinct actor.
 // deskpost posts every review/comment/flip AS this App by minting the
@@ -181,7 +191,7 @@ func mintInstallationToken(owner string) (string, error) {
 	}
 	jwt := signingInput + "." + b64url(sig)
 
-	url := fmt.Sprintf("%s/app/installations/%s/access_tokens", apiBaseURL, installID)
+	url := fmt.Sprintf("%s/app/installations/%s/access_tokens", ghAPIBase(), installID)
 	req, _ := http.NewRequest(http.MethodPost, url, nil)
 	req.Header.Set("Authorization", "Bearer "+jwt)
 	req.Header.Set("Accept", "application/vnd.github+json")
@@ -215,14 +225,16 @@ func mintInstallationToken(owner string) (string, error) {
 // identity mintInstallationToken always minted.
 //
 // Why a hook instead of letting ForgeFor mint through its own default path: deskpost
-// already mints in-process (JWT exchange against apiBaseURL, this file), and its ~30 test
-// files fake that exact exchange via a scriptable httptest server pointed to by apiBaseURL
+// already mints in-process (JWT exchange against ghAPIBase(), this file), and its test
+// files fake that exact exchange via a scriptable httptest server pointed to by forgeAPIBase
 // (harness_test.go). Reusing the existing, golden-pinned mint here — rather than growing a
 // second implementation in deskkit — is what lets `deskpost`'s forge writes route through
 // the resolver (this proof-of-reachability wiring, comment.go's runComment)
 // while every existing test keeps exercising the SAME mint path it always has, unmodified.
-// apiBaseURL is read HERE, at call time (not cached at init), so a per-test override still
-// reaches the Forge this produces.
+// The base URL is read HERE, at call time (not cached at init), so a per-test override still
+// reaches the Forge this produces: the hook returns the EMPTY production override, which the
+// resolver resolves to the forge module's default exactly as GitHubForge.baseURL() does — so
+// no forge host literal is bound in this cmd package.
 //
 // (See forgeresolve.go's header for the resolver contract this hook plugs into.)
 func init() {
@@ -231,7 +243,7 @@ func init() {
 		if merr != nil {
 			return "", "", merr
 		}
-		return tok, apiBaseURL, nil
+		return tok, forgeAPIBase, nil
 	})
 }
 
@@ -337,7 +349,7 @@ func (c *ghClient) doJSONRetry(method, path string, in, out any, allowRemint boo
 		}
 		bodyReader = bytes.NewReader(b)
 	}
-	req, err := http.NewRequest(method, apiBaseURL+path, bodyReader)
+	req, err := http.NewRequest(method, ghAPIBase()+path, bodyReader)
 	if err != nil {
 		return deskkit.Unverifiable("cannot build request", err)
 	}
@@ -953,7 +965,7 @@ func (c *ghClient) IssueReactions(owner, repo string, issueNumber int) ([]deskki
 	path := fmt.Sprintf("/repos/%s/%s/issues/%d/reactions?per_page=100", owner, repo, issueNumber)
 	// The reactions API requires the squirrel-girl preview accept header.
 	// Our doJSON method sets the standard accept header, so we need to use a raw request.
-	url := apiBaseURL + path
+	url := ghAPIBase() + path
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, deskkit.Unverifiable("cannot build reactions request", err)

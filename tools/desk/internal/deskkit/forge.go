@@ -20,12 +20,28 @@ package deskkit
 // behavior, pinned by the golden corpus (forge_github_golden_test.go) so the extraction
 // changed nothing observable at the wire.
 
+import "strings"
+
 // GitHubAPIBase is the single home of the GitHub REST/GraphQL host literal. Desk commands
 // that keep a package-level test hook (`var apiBaseURL = GitHubAPIBase`) source their
 // default from here so the literal is constructed in exactly one place — the forge module —
 // and never in a cmd package (the "no direct API construction outside the forge
 // implementation" contract).
 const GitHubAPIBase = "https://api.github.com"
+
+// GitHubBaseURLOrDefault resolves an override base to a concrete GitHub host: the override
+// when non-empty, else GitHubAPIBase. It is the ONE place the "" → default resolution lives,
+// so a desk command that keeps a raw REST reader whose reads have no typed Forge op
+// (deskpost's ghClient — contents, commit-author, the trust GraphQL query and the present-
+// label set are not interface operations) can hold an EMPTY host override in production and
+// still source its concrete host from the forge module, never binding the literal in a cmd
+// package. GitHubForge.baseURL() resolves through here too, so the two cannot drift.
+func GitHubBaseURLOrDefault(base string) string {
+	if base != "" {
+		return base
+	}
+	return GitHubAPIBase
+}
 
 // ForgeRepo is a repository coordinate: the two components every forge addresses a repo by.
 type ForgeRepo struct {
@@ -91,6 +107,12 @@ type PullRequest struct {
 	// predates this field and reads none of it, so its addition changes no existing
 	// behavior.
 	UpdatedAt string
+	// Body is the change's description text — the source of the one link trailer
+	// (`Brief: <stream>/<NN>` / `Issue: #<N>`). Consumer: cmd/deskflip's security lane,
+	// which resolves the owning brief from the trailer and consults the brief's own
+	// gate/risk frontmatter (BriefRiskFromBody) as an additive risk-classification term.
+	// omitempty keeps a bodyless change byte-identical in the forge golden corpus.
+	Body string `json:",omitempty"`
 }
 
 // The three values PullRequest.Mergeable takes. They are constants rather than free strings
@@ -282,6 +304,88 @@ type CommentRef struct {
 	URL        string
 }
 
+// FileContent is a file read from a branch: the decoded bytes plus the forge's own opaque
+// content id an update must cite to write safely.
+type FileContent struct {
+	// Content is the file's decoded bytes.
+	Content []byte
+	// SHA is the OPAQUE content id an update passes back so the write is refused if the file
+	// moved underneath it — GitHub's Contents-API blob `sha`, GitLab's `last_commit_id`,
+	// each filling the optimistic-lock role its own forge defines. A caller passes back what
+	// it was given and NEVER composes one. Empty when the file does not yet exist on the ref.
+	SHA string
+	// Exists distinguishes "the path is absent on this ref" (false) from "the file is present
+	// and empty" (true, Content == nil). A caller that must merge into an existing document
+	// reads Exists, never len(Content).
+	Exists bool
+}
+
+// ReadFileInput addresses one file at one ref. The fields are a struct rather than positional
+// arguments so the interface method takes no parameter that reads as an endpoint address (the
+// no-passthrough shape check keys on the interface's own parameter NAMES).
+type ReadFileInput struct {
+	// File is the repo-relative path ("docs/streams/…/brief.md"), never an API path.
+	File string
+	// Ref is the branch (or tag/sha) to read the file at.
+	Ref string
+}
+
+// WriteFileInput is a request to write Content at File on Branch. It folds the properties a
+// whole-file write needs to be safe — idempotency, the append-only shrink guard, and the
+// branch-creation fallback — into the ONE operation, rather than spreading them across a read
+// op, a ref-create op and a write op the freeze rule would each have to justify.
+type WriteFileInput struct {
+	// File is the repo-relative path to write.
+	File string
+	// Branch is the branch the write lands on.
+	Branch string
+	// Content is the whole new file content (a Contents-API PUT / Repository-Files write is
+	// whole-file, not a patch).
+	Content []byte
+	// Message is the commit message.
+	Message string
+	// AppendOnly, when true, refuses a write that would leave the file with FEWER row-bearing
+	// (non-blank) lines than the branch already holds — the stale-base/wrong-file clobber a
+	// whole-file write would otherwise land as a success. The backend FETCHES the current file
+	// and compares post-fetch; the constraint is passed in, the comparison is the backend's.
+	AppendOnly bool
+	// AllowShrink overrides AppendOnly when a row reduction is genuinely intended.
+	AllowShrink bool
+	// StartBranch, when set and Branch does not yet exist, creates Branch off StartBranch as
+	// PART of the write (GitLab's Repository-Files `start_branch`). It exists so the
+	// Evidence-lane fallback needs no separate CreateRef op on the frozen interface. Empty
+	// means "write to Branch, which must already exist".
+	StartBranch string
+}
+
+// WriteFileResult reports what a WriteFile actually did, so a caller can report the difference
+// rather than restating its own intent — the same reason LabelOutcome and PullRef exist.
+type WriteFileResult struct {
+	// Changed is false when the branch already held byte-identical content: the write was an
+	// idempotent noop and nothing was committed. The idempotency read is folded into WriteFile
+	// so a caller does not issue its own read to find out.
+	Changed bool
+	// SHA is the resulting content id — the new blob/commit id when Changed, and the existing
+	// one on a noop, so a caller always has an id to report.
+	SHA string
+	// Author is the git author the forge recorded on the write, when the forge reports one.
+	// GitHub's Contents API returns commit.author.name (an App-token write records the App's
+	// bot); GitLab's file write returns none, so Author is EMPTY there — which a caller reads
+	// as could-not-check, never as a wrong identity. It is not guessed.
+	Author string
+	// DefaultBranchNotWritable is the sentinel: Branch was the forge's default branch and this
+	// forge does not permit a direct write to it (GitLab's protected default — pilot D-8).
+	// NOTHING was written and no write call was made. The caller lands the change on a side
+	// branch (WriteFile with StartBranch) and opens a draft change instead. GitHub's default
+	// branch is directly writable by the verifier App (the direct-main carve-out), so its
+	// backend never sets this.
+	DefaultBranchNotWritable bool
+	// Rows and PriorRows are the row counts the shrink guard compared (0 when AppendOnly was
+	// not set), so a caller can name the delta in its own success line.
+	Rows      int
+	PriorRows int
+}
+
 // PushTransport describes how a minted token authenticates a git push to this forge — the
 // "push-transport hints" of spec §6. It carries NO secret: only the host and the scheme by
 // which a token (supplied out of band, via a 0600 file read by an inline credential helper)
@@ -297,6 +401,20 @@ type PushTransport struct {
 	// credential.helper reading the token file, NEVER a token-in-URL (which is
 	// classifier-blocked and leaks the secret into process argv / reflog).
 	CredentialHelperHint string
+}
+
+// forgeRowCount counts the row-bearing (non-blank) lines in b — the shrink guard's unit, so a
+// file with or without a trailing newline reports the same count. It lives here, shared by both
+// backends' WriteFile, so the append-only comparison is one definition rather than two that
+// could drift.
+func forgeRowCount(b []byte) int {
+	n := 0
+	for _, ln := range strings.Split(string(b), "\n") {
+		if strings.TrimSpace(ln) != "" {
+			n++
+		}
+	}
+	return n
 }
 
 // Forge is the single seam every desk tool reaches a forge through. The method set is the
@@ -342,6 +460,11 @@ type Forge interface {
 	ListComments(repo ForgeRepo, number int) ([]Comment, error)
 	// RepoVisibility returns the repo's visibility (private | public | internal | ...).
 	RepoVisibility(repo ForgeRepo) (string, error)
+	// ReadFile reads a file's content at a ref (GitHub Contents API ↔ GitLab Repository Files
+	// API). A path absent on the ref is a not-found error the caller tests with
+	// IsForgeNotFound — the seam does not decide whether "absent" is an error, because for a
+	// merge-into-existing it is and for a first-write it is not.
+	ReadFile(repo ForgeRepo, in ReadFileInput) (*FileContent, error)
 
 	// --- Writes ---
 
@@ -371,6 +494,15 @@ type Forge interface {
 	FileIssue(repo ForgeRepo, in IssueInput) (*IssueRef, error)
 	// CloseIssue closes an issue with an optional state reason.
 	CloseIssue(repo ForgeRepo, number int, stateReason string) error
+	// WriteFile writes a file's whole content at a path on a branch (GitHub Contents API ↔
+	// GitLab Repository Files API), as the minted identity the backend holds. It folds three
+	// properties into the one op (see WriteFileInput/WriteFileResult): an idempotency read
+	// that returns Changed=false on byte-identical content and writes nothing; an append-only
+	// shrink guard that refuses a row-reducing write post-fetch; and a default-branch
+	// writability probe that returns the DefaultBranchNotWritable sentinel — writing nothing —
+	// on a forge whose default branch takes no direct write, with StartBranch as the inline
+	// branch-creation fallback so no separate CreateRef op is needed.
+	WriteFile(repo ForgeRepo, in WriteFileInput) (*WriteFileResult, error)
 	// DeleteRef deletes one git ref from a repo. The ref is a REF PATH inside the repo's
 	// own ref namespace ("heads/topic", "dispatch/<key>"), never an API path: it is
 	// validated by ValidateRefPath before any request is built, so this op cannot be used
