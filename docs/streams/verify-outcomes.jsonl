@@ -1,3 +1,6 @@
+{"ts": "2026-09-07T01:36:11Z", "brief": "mistake-proofing/05", "outcome": "verified", "rows_passed": 9, "rows_total": 9, "sha": "67abbac"}
+{"ts": "2026-09-07T01:36:11Z", "brief": "forge-neutral/03", "outcome": "verify-fail", "rows_passed": 9, "rows_total": 14, "sha": "67abbac"}
+{"ts": "2026-09-07T02:38:01Z", "brief": "desk-supervision/02", "outcome": "verified", "rows_passed": 9, "rows_total": 9, "sha": "67abbac"}
 {"ts": "2026-09-07T02:41:22Z", "brief": "desk-supervision/07", "outcome": "verified", "rows_passed": 8, "rows_total": 8, "sha": "5d20ff9"}
 {"ts": "2026-09-07T03:46:30Z", "brief": "derived-board/03", "outcome": "verify-fail", "rows_passed": 7, "rows_total": 8, "sha": "5d20ff9"}
 {"ts": "2026-09-07T03:46:30Z", "brief": "statusgen/11", "outcome": "verify-fail", "rows_passed": 6, "rows_total": 9, "sha": "5d20ff9"}
