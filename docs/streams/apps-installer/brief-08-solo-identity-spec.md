@@ -111,6 +111,29 @@ not a differently-versioned installed binary):
 | 5 | `grep -cE -e 'ruleset' …` | ≥ 1 | 8 |
 | 6 | `statusgen --root . --lint` | exit 0 | exit 0 (LINT: PASS) |
 
+## Human decision
+
+The spec defines Solo, a zero-App pilot tier in which every desk role runs on the operator's own
+user token — the role becomes a label rather than a GitHub identity, one login authors, reviews (by
+comment), and merges. That weakens the bot-attribution the desk tools otherwise enforce, so the mode
+is the driver's to confirm, not an implementer's to pick. The fuller decision surface (options,
+consequences, and the restored controls) lives in
+[`solo-identity.md` § Human decision](./solo-identity.md#human-decision); this is its canonical
+summary.
+
+The options, and each one's consequence for the README tier table:
+
+| Option | Consequence for the tier table |
+|---|---|
+| **1. Adopt the spec as written.** Solo ships as specified: user token for every role, roles as labels, GitHub's self-approval refusal + the human merge gate as the restored controls, `app-scopes-vs-duties` / cold-mint could-not-check by construction, refusal on a bot-identity ruleset. | The **Solo** row stays as it is (0 bot identities; verdicts as the operator's comments; merging and every decision the operator's), gaining the explicit "the operator does far more" callout carried by apps-installer/07. |
+| **2. Adopt with named changes.** Same mode, but the driver alters a named boundary (a different switch than `ASSAY_SOLO_LOGIN`, a narrower verb set, or a stricter refusal rule). | The Solo row is amended to match; the "what stays the operator's" column is re-scoped to the altered boundary. |
+| **3. Reject Solo as a supported mode.** No zero-App tier ships; the pilot ramp starts at Read + Act. | The **Solo** row is removed and the "pilot ramp" language moves to Read + Act; design §7 becomes a recorded non-goal. |
+
+**Standing ruling.** Decision issue #467 records the driver's ruling on 2026-09-05: **adopt Solo as
+specified (option 1)**, on the condition that the install page and runbook state plainly that Solo
+means the operator does far more than in the other tiers (a callout carried by apps-installer/07).
+This spec is written to that ruling and does not re-ask it.
+
 ## Review
 Gate: human (decision-trigger: spec). The driver's ruling is recorded on the decision issue and
 cited in the stream README; the implementation brief is authored only after it.
