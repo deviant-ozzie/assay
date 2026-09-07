@@ -114,7 +114,11 @@ jobs:
           test -n "${out}"
 
       - name: Fail-first demonstration (opt-in; the leg MUST redden on a broken input)
-        if: ${{ inputs.failfirst == 'true' }}
+        # `inputs.failfirst` is a real boolean (type: boolean) — use it directly; comparing it
+        # to the string 'true' casts boolean→1 vs string→NaN (1 == NaN is false), which would
+        # skip this step even when dispatched with failfirst=true. Falsy on push/pull_request
+        # (no input present), so it stays dormant outside workflow_dispatch.
+        if: ${{ inputs.failfirst }}
         shell: bash
         run: |
           set -uo pipefail
