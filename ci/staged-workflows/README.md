@@ -22,6 +22,14 @@ reviewable artifact, not a run.
 
 ## Contents
 
+- `evidence-automerge.yml` — the Evidence-PR auto-merge lane. Unlike the other files here
+  this one is **already live**: it was promoted, and the copy in this directory is kept
+  byte-identical to `.github/workflows/evidence-automerge.yml` as the reviewable edit
+  surface, because no App may push a `.github/workflows/*` file. Every change to that lane
+  therefore lands here first, and a maintainer re-promotes it by copying the file over the
+  live one (`cp ci/staged-workflows/evidence-automerge.yml .github/workflows/evidence-automerge.yml`)
+  in a separate maintainer-credentialled commit. Until that copy lands, the merged change
+  is inert: the running workflow is still the old file.
 - `truth-suite.yml` — the standing truth suite (`docs/test-policy.md` § "Standing truth
   suite"): the test corpus plus the release mutation gate, on push to the default branch and
   on a daily schedule, reporting three-state. Promote it to `.github/workflows/truth-suite.yml`
