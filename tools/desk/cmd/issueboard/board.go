@@ -7,11 +7,9 @@ package main
 // invocation, mirroring tools/desk/cmd/deskboard/board.go + deskboard_test.go.
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -156,26 +154,7 @@ func escalationExceedsSLA(ageDays, slaDays int) bool {
 }
 
 // ---------------------------------------------------------------------------
-// gh runner (the single choke point every GET goes through)
-// ---------------------------------------------------------------------------
-
-// ghRun shells out to the real `gh` binary and returns stdout. It is a package var so
-// the PATH-shim test can exercise the REAL exec path (a fake gh first in PATH) and so
-// nothing here can silently swap in a mutating call. A non-zero gh exit becomes an
-// error carrying gh's stderr.
-var ghRun = func(args ...string) ([]byte, error) {
-	out, err := exec.Command("gh", args...).Output()
-	if err != nil {
-		if ee, ok := err.(*exec.ExitError); ok {
-			return nil, fmt.Errorf("gh %s: %s", strings.Join(args, " "), strings.TrimSpace(string(ee.Stderr)))
-		}
-		return nil, fmt.Errorf("gh %s: %v", strings.Join(args, " "), err)
-	}
-	return out, nil
-}
-
-// ---------------------------------------------------------------------------
-// data model (mirrors the gh JSON shapes)
+// data model (the fields the classifier reads, mapped from the Forge summaries)
 // ---------------------------------------------------------------------------
 
 type ghLabel struct {
@@ -200,36 +179,54 @@ type ghIssue struct {
 
 // fetchOpenIssues returns every open issue for repo (state=open only — the caller
 // cross-references against local placeholders to detect closed ones without ever
-// querying gh for closed issues).
+// querying the forge for closed issues). It reaches the forge through deskkit.ForgeFor's
+// ListOpenIssues (never the `gh` CLI), which returns ISSUES only — a forge that serves
+// issues and changes from one number sequence filters the changes out itself.
 func fetchOpenIssues(repo string) ([]ghIssue, error) {
-	out, err := ghRun("issue", "list", "-R", repo, "--state", "open", "--limit", "1000",
-		"--json", "number,title,author,labels,createdAt")
+	f, fr, err := forgeFor(repo)
 	if err != nil {
-		return nil, deskkit.Unverifiable("cannot read open issues for "+repo, err)
+		return nil, err
 	}
-	var issues []ghIssue
-	if err := json.Unmarshal(out, &issues); err != nil {
-		return nil, deskkit.Unverifiable("cannot parse issue list for "+repo, err)
+	summaries, lerr := f.ListOpenIssues(fr)
+	if lerr != nil {
+		return nil, deskkit.Unverifiable("cannot read open issues for "+repo, lerr)
 	}
-	return issues, nil
+	out := make([]ghIssue, 0, len(summaries))
+	for _, s := range summaries {
+		labels := make([]ghLabel, 0, len(s.Labels))
+		for _, n := range s.Labels {
+			labels = append(labels, ghLabel{Name: n})
+		}
+		created, perr := time.Parse(time.RFC3339, s.CreatedAt)
+		if perr != nil && s.CreatedAt != "" {
+			return nil, deskkit.Unverifiable(fmt.Sprintf("cannot parse createdAt for %s#%d", repo, s.Number), perr)
+		}
+		out = append(out, ghIssue{
+			Number:    s.Number,
+			Title:     s.Title,
+			Author:    ghAuthor{Login: s.Author.Login},
+			Labels:    labels,
+			CreatedAt: created,
+		})
+	}
+	return out, nil
 }
 
 // fetchIssueTitle resolves a single issue's title (used for RETIRE rows, where the
 // issue is no longer in the open list so its title isn't otherwise known). Best
 // effort: the caller falls back to a placeholder string on error rather than failing
-// the whole board — RETIRE is already fully determined without the title.
+// the whole board — RETIRE is already fully determined without the title. It reads the
+// title through the typed GetIssue op (never the `gh` CLI); a closed issue reads fine.
 func fetchIssueTitle(repo string, num int) (string, error) {
-	out, err := ghRun("issue", "view", strconv.Itoa(num), "-R", repo, "--json", "title")
+	f, fr, err := forgeFor(repo)
 	if err != nil {
 		return "", err
 	}
-	var v struct {
-		Title string `json:"title"`
+	iss, gerr := f.GetIssue(fr, num)
+	if gerr != nil {
+		return "", gerr
 	}
-	if err := json.Unmarshal(out, &v); err != nil {
-		return "", err
-	}
-	return v.Title, nil
+	return iss.Title, nil
 }
 
 // fetchIssueBlessed evaluates the blessing for an issue whose AUTHOR is
@@ -257,21 +254,15 @@ func fetchIssueBlessed(repo string, num int) (bool, error) {
 // the item's body-edit time and its content events. A query, never a mutation — the
 // PATH-shim test allows graphql invocations only when no mutation appears.
 func fetchIssueTrustPayload(repo string, num int) (bodyEdited time.Time, events []deskkit.ContentEvent, complete bool, err error) {
-	owner, name, ok := strings.Cut(repo, "/")
-	if !ok {
-		return time.Time{}, nil, false, deskkit.Unverifiable("bad repo "+repo, nil)
+	f, fr, ferr := forgeFor(repo)
+	if ferr != nil {
+		return time.Time{}, nil, false, ferr
 	}
-	out, err := ghRun("api", "graphql",
-		"-f", "query="+deskkit.IssueTrustQuery,
-		"-f", "owner="+owner, "-f", "name="+name, "-F", "number="+strconv.Itoa(num))
-	if err != nil {
-		return time.Time{}, nil, false, deskkit.Unverifiable(fmt.Sprintf("cannot read events for %s#%d", repo, num), err)
+	tp, terr := f.IssueTrustEvents(fr, num)
+	if terr != nil {
+		return time.Time{}, nil, false, deskkit.Unverifiable(fmt.Sprintf("cannot read events for %s#%d", repo, num), terr)
 	}
-	bodyEdited, events, complete, perr := deskkit.ParseIssueTrustPayload(out)
-	if perr != nil {
-		return time.Time{}, nil, false, deskkit.Unverifiable(fmt.Sprintf("cannot parse events for %s#%d", repo, num), perr)
-	}
-	return bodyEdited, events, complete, nil
+	return tp.BodyEdited, tp.Events, tp.Complete, nil
 }
 
 // fetchIssueEvents reads a decision-owed issue's content-event history for the
