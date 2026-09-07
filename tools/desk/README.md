@@ -195,6 +195,21 @@ branch name, body, and for `deskpr create` the diff against the default branch. 
 exit 5. It also refuses a body that claims a named human's ruling, because no desk write
 path ever posts as a human.
 
+Pass `--explain` (on `deskpr`, `deskpost` and `deskreply`) to learn WHICH rule refused and
+WHERE without a second charged attempt. On a secret-scan refusal the verb prints one extra
+line to stderr:
+
+```
+scan-explain: rule=high-entropy-run line=42 length=40 shape=Qx…Dz (base64)
+```
+
+— the rule id (`high-entropy-run`, `decrypted-k8s-secret`, `pem-block`, `sops-block`,
+`github-token`, `aws-key-id`, `jwt`), the 1-based line of the first offending span, its
+length, and a REDACTED shape (first two and last two characters, the middle elided, plus a
+character-class summary). **The explain line never prints the offending span itself — the
+refusal must not become the leak.** Without `--explain` the refusal message is byte-for-byte
+what it was, so existing transcripts do not change shape.
+
 When the target repo is not known-private, `deskpr create`, `deskpr edit`, `deskpost` and `deskreply`
 additionally run `deskkit.SelfContainCheck` (`internal/deskkit/selfcontain.go`) over the
 body: a text free of credentials can still carry a private repo name, a cross-repo ref

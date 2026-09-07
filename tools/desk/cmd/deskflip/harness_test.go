@@ -58,6 +58,7 @@ type prFixture struct {
 	ChangedFiles int
 	Labels       []string
 	NodeID       string
+	Body         string // the change description, carrying the link trailer
 }
 
 // stub is the fake forge instance plus every knob a case needs. A case sets only what it is
@@ -288,7 +289,7 @@ func (s *stub) servedPR() map[string]any {
 	}
 	out := map[string]any{
 		"number": s.pr.Number, "state": strings.ToLower(s.pr.State), "draft": s.pr.IsDraft,
-		"node_id": s.pr.NodeID, "changed_files": s.pr.ChangedFiles,
+		"node_id": s.pr.NodeID, "changed_files": s.pr.ChangedFiles, "body": s.pr.Body,
 		"user":   map[string]any{"login": "worker[bot]", "id": 99},
 		"head":   map[string]any{"sha": head, "ref": "feat/x"},
 		"base":   map[string]any{"ref": "main"},

@@ -230,15 +230,16 @@ pins the head itself.
 `, short(head), owner, name, pr, head, pr, owner, name, verdict, bodyFile)
 }
 
-// postFlagVals holds the raw --dry-run / --wait values until fs.Parse has run.
+// postFlagVals holds the raw --dry-run / --wait / --explain values until fs.Parse has run.
 type postFlagVals struct {
-	dryRun *bool
-	wait   *string
+	dryRun  *bool
+	wait    *string
+	explain *bool
 }
 
-// addPostFlags registers the two cross-verb modifiers on a verb's FlagSet. They are
-// registered identically on every mutating verb so a caller never has to remember which
-// verb accepts which — an unknown flag is a usage error (exit 2), not a silent ignore.
+// addPostFlags registers the cross-verb modifiers on a verb's FlagSet. They are registered
+// identically on every mutating verb so a caller never has to remember which verb accepts
+// which — an unknown flag is a usage error (exit 2), not a silent ignore.
 func addPostFlags(fs *flag.FlagSet) postFlagVals {
 	return postFlagVals{
 		dryRun: fs.Bool("dry-run", false,
@@ -246,6 +247,8 @@ func addPostFlags(fs *flag.FlagSet) postFlagVals {
 		wait: fs.String("wait", "",
 			"on a rate-limit refusal (exit 4), wait up to this long in-tool for the budget to free (e.g. 20m) "+
 				"instead of returning exit 4; default: do not wait"),
+		explain: fs.Bool("explain", false,
+			"on a secret-scan refusal, also print a scan-explain line naming the rule id and line number (never the offending span)"),
 	}
 }
 
@@ -260,6 +263,7 @@ const maxWait = 90 * time.Minute
 func (v postFlagVals) resolve() (postOpts, bool) {
 	var o postOpts
 	o.dryRun = *v.dryRun
+	o.explain = *v.explain
 	if *v.wait != "" {
 		d, err := time.ParseDuration(*v.wait)
 		if err != nil {

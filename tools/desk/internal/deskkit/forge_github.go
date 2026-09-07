@@ -2,6 +2,7 @@ package deskkit
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -53,10 +54,7 @@ type GitHubForge struct {
 var _ Forge = (*GitHubForge)(nil)
 
 func (g *GitHubForge) baseURL() string {
-	if g.BaseURL != "" {
-		return g.BaseURL
-	}
-	return GitHubAPIBase
+	return GitHubBaseURLOrDefault(g.BaseURL)
 }
 
 // restClient returns the go-gh REST client for this forge, building it on first use.
@@ -164,6 +162,7 @@ type ghPullWire struct {
 	State        string `json:"state"`
 	Draft        bool   `json:"draft"`
 	NodeID       string `json:"node_id"`
+	Body         string `json:"body"`
 	ChangedFiles int    `json:"changed_files"`
 	User         struct {
 		Login string `json:"login"`
@@ -312,6 +311,7 @@ func (g *GitHubForge) GetPullRequest(repo ForgeRepo, number int) (*PullRequest, 
 		State:        w.State,
 		Draft:        w.Draft,
 		NodeID:       w.NodeID,
+		Body:         w.Body,
 		ChangedFiles: w.ChangedFiles,
 		Author:       Account{Login: w.User.Login, ID: w.User.ID},
 		HeadSHA:      w.Head.SHA,
@@ -891,6 +891,121 @@ func (g *GitHubForge) DeleteRef(repo ForgeRepo, ref string) error {
 	}
 	path := fmt.Sprintf("/repos/%s/%s/git/refs/%s", repo.Owner, repo.Name, clean)
 	return g.doJSON(http.MethodDelete, path, nil, nil)
+}
+
+// --- File content (read / write on a branch) ---
+
+// ghContentsWire is the Contents-API read shape (only the fields consumed). `content` is
+// base64 with the API's own 60-column line wrapping, stripped before decoding.
+type ghContentsWire struct {
+	SHA      string `json:"sha"`
+	Content  string `json:"content"`
+	Encoding string `json:"encoding"`
+}
+
+// ghContentsCommitWire is the Contents-API write response: the new blob sha under `content`
+// and the git author the created commit carries under `commit.author` (for an App-token write,
+// the App's bot — the identity an Evidence commit is supposed to have).
+type ghContentsCommitWire struct {
+	Content struct {
+		SHA string `json:"sha"`
+	} `json:"content"`
+	Commit struct {
+		SHA    string `json:"sha"`
+		Author struct {
+			Name  string `json:"name"`
+			Email string `json:"email"`
+		} `json:"author"`
+	} `json:"commit"`
+}
+
+// stripBase64Whitespace removes the newlines GitHub wraps base64 content at (every 60 cols),
+// which StdEncoding.DecodeString does not tolerate.
+func stripBase64Whitespace(s string) string {
+	return strings.Map(func(r rune) rune {
+		switch r {
+		case '\n', '\r', ' ', '\t':
+			return -1
+		}
+		return r
+	}, s)
+}
+
+// ReadFile reads a file's content at a ref via the Contents API. A 404 propagates as a
+// *ForgeAPIError (IsForgeNotFound true) so a caller can distinguish "absent" from "unreadable".
+func (g *GitHubForge) ReadFile(repo ForgeRepo, in ReadFileInput) (*FileContent, error) {
+	path := fmt.Sprintf("/repos/%s/%s/contents/%s?ref=%s",
+		repo.Owner, repo.Name, in.File, url.QueryEscape(in.Ref))
+	var w ghContentsWire
+	if err := g.doJSON(http.MethodGet, path, nil, &w); err != nil {
+		return nil, err
+	}
+	if w.SHA == "" {
+		return nil, Unverifiable(fmt.Sprintf("empty sha in contents response for %s@%s", in.File, in.Ref), nil)
+	}
+	decoded, derr := base64.StdEncoding.DecodeString(stripBase64Whitespace(w.Content))
+	if derr != nil {
+		return nil, Unverifiable("cannot decode base64 content for "+in.File, derr)
+	}
+	return &FileContent{Content: decoded, SHA: w.SHA, Exists: true}, nil
+}
+
+// WriteFile writes a file's whole content on a branch via the Contents API, as the minted
+// (App) identity. GitHub's default branch is directly writable by the verifier App — the
+// direct-main carve-out — so this backend never returns the DefaultBranchNotWritable sentinel
+// and ignores StartBranch: on GitHub the Evidence row lands on the target branch directly. The
+// idempotency read and the append-only shrink guard are folded in per WriteFileInput.
+func (g *GitHubForge) WriteFile(repo ForgeRepo, in WriteFileInput) (*WriteFileResult, error) {
+	res := &WriteFileResult{}
+	var priorSHA string
+	var priorContent []byte
+	exists := false
+	cur, rerr := g.ReadFile(repo, ReadFileInput{File: in.File, Ref: in.Branch})
+	if rerr != nil {
+		if !IsForgeNotFound(rerr) {
+			return nil, rerr
+		}
+		// Absent on the branch → this is a create.
+	} else {
+		priorSHA, priorContent, exists = cur.SHA, cur.Content, true
+	}
+
+	if in.AppendOnly {
+		res.PriorRows = forgeRowCount(priorContent)
+		res.Rows = forgeRowCount(in.Content)
+	}
+
+	// Idempotency: byte-identical content already on the branch is a noop, no write.
+	if exists && bytes.Equal(priorContent, in.Content) {
+		res.SHA = priorSHA
+		return res, nil
+	}
+
+	// Append-only shrink guard, refused post-fetch (see WriteFileInput.AppendOnly).
+	if in.AppendOnly && !in.AllowShrink && exists && res.Rows < res.PriorRows {
+		return nil, Refused(fmt.Sprintf(
+			"refusing an append-only write to %s on %s that would SHRINK it from %d to %d row(s) — "+
+				"almost always a stale-base or wrong-file write; pass AllowShrink when the reduction is intended",
+			in.File, in.Branch, res.PriorRows, res.Rows))
+	}
+
+	body := map[string]any{
+		"message": in.Message,
+		"content": base64.StdEncoding.EncodeToString(in.Content),
+		"branch":  in.Branch,
+	}
+	if priorSHA != "" {
+		body["sha"] = priorSHA
+	}
+	var w ghContentsCommitWire
+	path := fmt.Sprintf("/repos/%s/%s/contents/%s", repo.Owner, repo.Name, in.File)
+	if err := g.doJSON(http.MethodPut, path, body, &w); err != nil {
+		return nil, err
+	}
+	res.Changed = true
+	res.SHA = w.Content.SHA
+	res.Author = w.Commit.Author.Name
+	return res, nil
 }
 
 // --- Identity / transport ---
