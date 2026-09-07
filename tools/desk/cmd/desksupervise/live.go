@@ -31,9 +31,11 @@ const dispatchClaimScriptRel = "tools/dispatch-claim.sh"
 
 // readLiveClaims enumerates every `state=dispatched` dispatch claim for repo, live:
 //
-//  1. list refs/dispatch/* on the repo's remote (an in-process go-git listing, gitcore.List
-//     — never the git binary) to get the claim KEYS (the documented house convention: SKILL.md
-//     and the worker prompt both name `git ls-remote origin 'refs/dispatch/*'` for this read);
+//  1. list the claim namespace on the repo's remote (an in-process go-git listing, gitcore.List
+//     — never the git binary) to get the claim KEYS. The prefix is deskkit.ClaimRefsPrefix, the
+//     same constant the release path builds its ref from, so this listing and that delete cannot
+//     name different namespaces (the documented house convention: SKILL.md and the worker prompt
+//     both name `git ls-remote origin 'refs/heads/dispatch/*'` for this read);
 //  2. for each key, shell to the consumer's own tools/dispatch-claim.sh `show <key> --repo
 //     <repo>` — the SAME external script cmd/deskdispatch/dispatch.go already shells to for
 //     acquire/show, so this is a second, read-only caller of an existing external contract,
@@ -59,14 +61,12 @@ func readLiveClaims(root, repo string, now time.Time) ([]claimRecord, error) {
 
 	refs, lerr := gitcore.List(gitcore.ListOpts{URL: "https://github.com/" + repo + ".git"})
 	if lerr != nil {
-		return nil, deskkit.Unverifiable("cannot list refs/dispatch/* on "+repo, lerr)
+		return nil, deskkit.Unverifiable("cannot list "+deskkit.ClaimRefsPattern+" on "+repo, lerr)
 	}
 	var keys []string
-	const prefix = "refs/dispatch/"
 	for _, r := range refs {
-		name := string(r.Name())
-		if strings.HasPrefix(name, prefix) {
-			keys = append(keys, strings.TrimPrefix(name, prefix))
+		if key, ok := deskkit.ClaimKeyFromRef(string(r.Name())); ok {
+			keys = append(keys, key)
 		}
 	}
 

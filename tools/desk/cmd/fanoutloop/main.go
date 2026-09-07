@@ -91,7 +91,10 @@ func cmdPlan(args []string) error {
 		return deskkit.Refused("bad flags: " + err.Error())
 	}
 
-	f := &FanoutLoop{Root: *root, TargetSHA: *sha}
+	// DryRun is set EXPLICITLY here rather than left to a default: `plan` documents itself as
+	// touching no network and writing nothing, and that promise is now a stated property of the
+	// loop rather than a consequence of the sink having had nothing wired into it.
+	f := &FanoutLoop{Root: *root, TargetSHA: *sha, DryRun: true}
 	return renderPlan(f, os.Stdout)
 }
 

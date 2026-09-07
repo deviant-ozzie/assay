@@ -3367,7 +3367,7 @@ claim `live` rather than stealing it.
 
 **Scope boundary.** This probe governs only the machine-local claim files under the config
 home's `claims/` dir. The `dispatch` kind's cross-machine form — the forge ref
-`refs/dispatch/*` written by `tools/dispatch-claim.sh` — is OUT OF SCOPE: its reclaim is a
+`refs/heads/dispatch/*` written by `tools/dispatch-claim.sh` — is OUT OF SCOPE: its reclaim is a
 forge-side decision with no TTL in this library, and `deskclaim stale`/`acquire` never touch it.
 
 **Why a binary and not a shell line (the #146 close).** The atomic-claim idiom used to live

@@ -103,7 +103,7 @@ empty. Repos and roots come from §THE REPO SET, never a pasted list.
 | 6 | Un-briefed trusted work-ready issues (§Un-briefed issues) | `issueboard issues` — fail-closed |
 | 7 | A red default branch on a watched repo | `deskboard health` — three-state (green / RED / COULD-NOT-CHECK) |
 | 8 | Cross-root coverage: a board root that no sweep reaches, or a scanned repo with no board | the BOARD ROOTS ∪ SCAN REPOS symmetric difference printed at boot (§THE REPO SET) |
-| 9 | Queue **suppressors** — expired `refs/dispatch/*` claims and dead branch-claims from merged/closed PRs | `desksupervise status --stops` (the liveness observer's runtime snapshot: per-claim liveness, timers-to-fire, and which stops are armed — the one structured read the sweep uses instead of guessing); the raw `git ls-remote origin 'refs/dispatch/*'` + the repo's `dispatch-claim` helper's list/show verbs stay as the fallback |
+| 9 | Queue **suppressors** — expired `refs/heads/dispatch/*` claims and dead branch-claims from merged/closed PRs | `desksupervise status --stops` (the liveness observer's runtime snapshot: per-claim liveness, timers-to-fire, and which stops are armed — the one structured read the sweep uses instead of guessing); the raw `git ls-remote origin 'refs/heads/dispatch/*'` + the repo's `dispatch-claim` helper's list/show verbs stay as the fallback |
 
 **Rows 5 and 3 outrank row 1** — resuming started work outranks a fresh brief (mm/10) — and row 2 is
 what tells you whether row 1's zero means drained or throttled.
@@ -300,7 +300,7 @@ every root each tick. The 4-per-stream cap is per stream, and a same-named strea
 separately.
 
 **5. Keep the records current — silently.** The dispatch log is what the machinery already writes:
-`refs/dispatch/*` claims, roster registrations, branches, draft PRs, dispatch comments. The loop
+`refs/heads/dispatch/*` claims, roster registrations, branches, draft PRs, dispatch comments. The loop
 pauses only between ticks — never because "the wave finished". Note what that log does NOT cover: the
 sweep itself leaves no audit row, so a tick that only planned is indistinguishable from a tick that
 never ran unless the tick's own line (§Output contract) says otherwise.

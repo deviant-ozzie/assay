@@ -56,7 +56,7 @@ type FanoutLoop struct {
 	Rework func() ([]BoardRow, error)
 	// InFlight is the in-flight-claim source for the ADVISORY write-scope overlap warning:
 	// the items already claimed for this root, carried as their derived
-	// write-scopes. nil reads the root repo's local `refs/dispatch/*` claims (offline). Tests
+	// write-scopes. nil reads the root repo's local `refs/heads/dispatch/*` claims (offline). Tests
 	// inject fixtures here. It is ADVISORY only — nothing dispatches or blocks on it.
 	InFlight func() ([]loopengine.Item, error)
 
@@ -79,9 +79,16 @@ type FanoutLoop struct {
 	// is BLOCKED-ON-HUMAN, so Dispatch refuses rather than pretend to run.
 	Feeder func(loopengine.Item, loopengine.Tier, string) (loopengine.Result, error)
 	// DispatchSink makes a landed dispatch durable (record the handle + release the dispatch claim).
-	// nil defaults to the SAFE dry-run sink, which performs no network write — the autonomous cutover
-	// is BLOCKED-ON-HUMAN.
+	// nil builds the real releasing sink from the forge resolver (see sink()). Tests inject here.
 	DispatchSink Sink
+	// DryRun selects the printing sink instead of the releasing one: no network write is made,
+	// and every release is emitted as the line it WOULD have performed. It is an explicit
+	// choice, never a fallback — see sink().
+	DryRun bool
+	// ResolveForge overrides how the real sink obtains the Forge for an item's target repo.
+	// nil is production: deskkit.ForgeFor under the session's own App role. Tests inject here
+	// so the release path is exercised without a live remote.
+	ResolveForge forgeResolver
 
 	mu sync.Mutex
 	// inFlight / handled model the board's own claim-filtering for the reference build: a brief with
@@ -227,7 +234,10 @@ func (f *FanoutLoop) Land(r loopengine.Result) error {
 	f.handled[r.Item.ID] = true
 	f.mu.Unlock()
 
-	s := f.sink()
+	s, serr := f.sink()
+	if serr != nil {
+		return serr
+	}
 	if err := s.RecordDispatch(r); err != nil {
 		return err
 	}
@@ -306,11 +316,34 @@ func (f *FanoutLoop) emit() io.Writer {
 	return os.Stdout
 }
 
-func (f *FanoutLoop) sink() Sink {
+// sink returns the Sink a landing acts through.
+//
+// The DEFAULT is the real, claim-releasing sink, constructed from the forge resolver — this is
+// where the file-level "wired only at cutover, on the owner's call" deferral is discharged. It
+// can no longer yield a sink holding a nil forge: the resolver is obtained here and refused at
+// construction if absent (newForgeDispatchSink), and the forge for the item's target repo is
+// resolved through deskkit.ForgeFor at release time.
+//
+// DryRun selects the printing sink INSTEAD, explicitly. That is the shape the safety property
+// needs: a driver that must not touch the network says so, rather than a misconfigured
+// deployment silently falling back to a sink that leaks a claim per landing.
+func (f *FanoutLoop) sink() (Sink, error) {
 	if f.DispatchSink != nil {
-		return f.DispatchSink
+		return f.DispatchSink, nil
 	}
-	return dryRunSink{out: f.emit()}
+	if f.DryRun {
+		return dryRunSink{out: f.emit()}, nil
+	}
+	return newForgeDispatchSink(f.emit(), f.forgeResolver())
+}
+
+// forgeResolver is the resolver the real sink is built from: production's deskkit.ForgeFor
+// wiring unless a test injected one.
+func (f *FanoutLoop) forgeResolver() forgeResolver {
+	if f.ResolveForge != nil {
+		return f.ResolveForge
+	}
+	return productionForgeResolver
 }
 
 // handle is the interim in-flight tracker: Done() fires when Feeder returns the structured Result.
