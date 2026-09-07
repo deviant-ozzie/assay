@@ -164,6 +164,7 @@ type ghPullWire struct {
 	State        string `json:"state"`
 	Draft        bool   `json:"draft"`
 	NodeID       string `json:"node_id"`
+	Body         string `json:"body"`
 	ChangedFiles int    `json:"changed_files"`
 	User         struct {
 		Login string `json:"login"`
@@ -312,6 +313,7 @@ func (g *GitHubForge) GetPullRequest(repo ForgeRepo, number int) (*PullRequest, 
 		State:        w.State,
 		Draft:        w.Draft,
 		NodeID:       w.NodeID,
+		Body:         w.Body,
 		ChangedFiles: w.ChangedFiles,
 		Author:       Account{Login: w.User.Login, ID: w.User.ID},
 		HeadSHA:      w.Head.SHA,

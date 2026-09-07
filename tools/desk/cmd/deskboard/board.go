@@ -2031,22 +2031,34 @@ func classifyPR(repo string, p prBase, ciRequired bool, briefScore map[string]in
 	// Risk classification (#216) only matters at the FLIP decision: bot
 	// APPROVED at head, CI green, still draft, not blocking. Fetch changed
 	// files there to test the path triggers.
+	// Resolve the owning brief from the PR body's `Brief:` trailer and read its own
+	// gate/risk frontmatter (deskkit.BriefRiskFromBody) — the authoritative owner edge and
+	// a risk term. Branch-as-claim is the fallback for a body that names no brief.
+	briefRisk := deskkit.BriefRiskFromBody(repo, p.Body)
+
 	riskClassed := false
 	if rs.approved && rs.atHead && !rs.blocking && p.IsDraft && fail == 0 && pending == 0 {
 		files, complete, err := fetchChangedFiles(repo, p.Number)
 		if err != nil {
 			return prOutcome{}, err
 		}
-		// A diff we could not read in full is risk-classed: the trigger we did not
-		// see is exactly the one this gate exists to catch.
-		riskClassed = !complete || anyRiskPath(repo, files)
+		// UNION (only widens): a diff we could not read in full — the trigger we did not
+		// see is exactly the one this gate exists to catch — OR a changed path in the
+		// trigger set OR the owning brief's OWN `gate: human` / `risk: yes` declaration.
+		// The brief term is what a code-level sensitive change declared in frontmatter
+		// (not in a touched path) is caught by.
+		riskClassed = !complete || anyRiskPath(repo, files) || briefRisk.RiskClassed
 	}
 	in.riskClassed = riskClassed
 
 	action, note := classify(in)
 
-	// map PR to its owning brief via branch-as-claim.
-	owning := mapBranchToBrief(p.HeadRefName, knownBriefs)
+	// The owning brief is the trailer's; branch-as-claim is the fallback for a body that
+	// names none.
+	owning := briefRisk.OwningBrief
+	if owning == "" {
+		owning = mapBranchToBrief(p.HeadRefName, knownBriefs)
+	}
 	score := defaultGateScore
 	if owning != "" {
 		score = briefScore[owning]
