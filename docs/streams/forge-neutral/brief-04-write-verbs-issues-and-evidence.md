@@ -37,7 +37,7 @@ domain: complicated
 consumers:
   - "tools/desk/cmd/deskevidence: fixed-here"
   - "tools/desk/internal/deskkit/forge.go: fixed-here (WriteFile + ReadFile added to the frozen seam, both backends)"
-  - "docs/streams/forge-gitlab/inventory.md: fixed-here (both ops inventoried, rows 20–21)"
+  - "docs/streams/forge-gitlab/inventory.md: fixed-here (both ops inventoried, rows 21–22)"
   - "tools/desk/cmd/deskpr: follow-on forge-neutral/04b (the gh-migration for deskpr/deskfile/deskclose; #509 ruled it a code-aware rescope that first adds the enumerated ops each still lacks, not a ratchet-number correction)"
   - "tools/desk/cmd/deskfile: follow-on forge-neutral/04b"
   - "tools/desk/cmd/deskclose: follow-on forge-neutral/04b"
@@ -70,7 +70,7 @@ constraint is passed in and the backend refuses post-fetch), the default-branch 
 inline; GitHub's default branch is directly writable by the verifier App — no new `CreateRef` op).
 
 The Task and Verify sections below are rewritten to this slice; the original four-verb text is
-preserved in the git history and in `docs/streams/forge-gitlab/inventory.md` rows 20–21.
+preserved in the git history and in `docs/streams/forge-gitlab/inventory.md` rows 21–22.
 
 ## Context
 files:
@@ -135,7 +135,7 @@ facts:
    (`StartBranch` cuts the side branch inline — no new `CreateRef` op). `ReadFile(repo,
    ReadFileInput)` reads a file's content at a ref, consumed by the `--brief-path` Evidence merge
    (read the remote brief → merge the `## Evidence` section → write via `WriteFile`). Record both
-   in `docs/streams/forge-gitlab/inventory.md` (rows 20–21) and give each a both-backend contract
+   in `docs/streams/forge-gitlab/inventory.md` (rows 21–22) and give each a both-backend contract
    case.
 2. **Migrate `deskevidence` onto the resolver.** Route its Evidence write through `WriteFile` and
    its brief read through `ReadFile`, under `ForgeFor(fr, "verifier")` with a
@@ -172,7 +172,7 @@ facts:
 
 | Failure mode of the work | Caught by |
 |---|---|
-| A file op is added with no consuming call site, violating the freeze rule | row 9 + rows 20–21 of the inventory + `deskevidence`'s own suite (row 2) |
+| A file op is added with no consuming call site, violating the freeze rule | row 9 + rows 21–22 of the inventory + `deskevidence`'s own suite (row 2) |
 | The seam grows a generic/passthrough op behind the two file ops | row 6 (`TestForgeNoPassthrough`: no generic-verb method, no endpoint parameter, no extra exported backend method) |
 | The extraction changes a backend's wire behaviour | row 7 (the golden corpora pin `read_file` / `write_file*` per backend) |
 | On a forge with no direct-default-branch push, `deskevidence` reports success having written nothing | row 10 asserts a change was opened AND zero direct writes to the default branch occurred |
