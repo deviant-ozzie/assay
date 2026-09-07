@@ -53,10 +53,7 @@ type GitHubForge struct {
 var _ Forge = (*GitHubForge)(nil)
 
 func (g *GitHubForge) baseURL() string {
-	if g.BaseURL != "" {
-		return g.BaseURL
-	}
-	return GitHubAPIBase
+	return GitHubBaseURLOrDefault(g.BaseURL)
 }
 
 // restClient returns the go-gh REST client for this forge, building it on first use.

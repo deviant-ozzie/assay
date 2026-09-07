@@ -27,6 +27,20 @@ package deskkit
 // implementation" contract).
 const GitHubAPIBase = "https://api.github.com"
 
+// GitHubBaseURLOrDefault resolves an override base to a concrete GitHub host: the override
+// when non-empty, else GitHubAPIBase. It is the ONE place the "" → default resolution lives,
+// so a desk command that keeps a raw REST reader whose reads have no typed Forge op
+// (deskpost's ghClient — contents, commit-author, the trust GraphQL query and the present-
+// label set are not interface operations) can hold an EMPTY host override in production and
+// still source its concrete host from the forge module, never binding the literal in a cmd
+// package. GitHubForge.baseURL() resolves through here too, so the two cannot drift.
+func GitHubBaseURLOrDefault(base string) string {
+	if base != "" {
+		return base
+	}
+	return GitHubAPIBase
+}
+
 // ForgeRepo is a repository coordinate: the two components every forge addresses a repo by.
 type ForgeRepo struct {
 	Owner string
