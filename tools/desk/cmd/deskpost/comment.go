@@ -43,6 +43,7 @@ func runComment(owner, name string, num int, wantHead string, body []byte, args 
 		// effects. This runs identically for both kinds: the checks are a
 		// property of the BODY, and nothing about targeting an issue relaxes them.
 		if err := bodycheck.Comment(body); err != nil {
+			deskkit.MaybeExplain(stderr, opts.explain, err)
 			return withDigest(fromReadErr(preVerb, repo, num, "", err), dig)
 		}
 		// #203: the PUBLIC-REPO SELF-CONTAINMENT scan — a body free of credentials can
