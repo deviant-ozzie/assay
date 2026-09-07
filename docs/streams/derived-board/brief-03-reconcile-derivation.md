@@ -99,6 +99,23 @@ facts:
 | 8 | `cd statusgen && go vet ./... && ! grep -rn 'graphql' --include=*.go ghfetch.go reconcile.go lifecycle.go briefv2.go` | exit 0 — the derivation's own network layer uses REST, never GraphQL (the grep is scoped to the files THIS brief introduces; a repo-wide grep additionally matches the pre-existing `trustgate.go` trust-query `gh api graphql`, a security control landed by forward-sync after this brief was authored and out of this brief's scope) |
 
 ## Evidence
+### Non-implementer verifier run — VERIFY: FAIL (row 4 — stale Verify-row anchor, not an engine defect); rows 3/4 re-run ONLINE read-only per the desk online-read-only-lane ruling — 2026-09-06 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `5d20ff9`
+Runner ≠ implementer. Isolated worktree off origin/main. statusgen built from this worktree's source, not PATH. Envelope: KUBECONFIG=/dev/null; rows 3+4 online read-only (verifier read token) — the sanctioned online lane for read-only forge reads; no mutating/cluster call. `gate: model`, all risk `no`. This supersedes the prior offline "BLOCKED (rows 3/4 could-not-check)" run — rows 3/4 are now RUN.
+
+| # | command | expected | exit / observed | Date | Runner |
+|---|---------|----------|-----------------|------|--------|
+| 1 | lifecycle/briefv2/ghfetch tests → grep -c '^--- PASS' | ≥14 | exit 0 — 26 (15+6+5) | 2026-09-06 | opus-4.8[1m]-verifier |
+| 2 | reconcile --root . --offline --json → all pr-cell unknown | exit 0 | exit 0, ok — no offline PR-derived cell is todo | 2026-09-06 | opus-4.8[1m]-verifier |
+| 3 | GITHUB_TOKEN=invalid reconcile --repo medici-finance/assay --json → lookedAt==false, reason HTTP… | exit 0 | exit 0, ok — lookedAt=false, reason "HTTP 401: Bad credentials" (online read; fail-closed) | 2026-09-06 | opus-4.8[1m]-verifier |
+| 4 | reconcile --repo medici-finance/assay --json (valid read token) → desk-containers/02 cell in implemented/verified/done, witness PR #67 | rc=0 | **FAIL — rc=1.** Token accepted (lookedAt=true, 139 briefs; 75 briefs derive PR-witnessed implemented/verified/done correctly, incl. derived-board/03 → PR #199). desk-containers/02 → cell=todo, witness="" ("PR search ran; no open or merged PR carries this brief's trailer"). STALE ANCHOR: the deliverable is merged PR #67 whose body carries NO `Brief:` trailer; per the engine's deliberate single-trailer contract (ghfetch.go:98-121, singleBriefTrailer :217) it honestly returns todo; the board-flip lives in PR #74. Live-data drift from the 2026-08-22 fixture — re-anchor row 4 (or re-record PR #67's trailer) | 2026-09-06 | opus-4.8[1m]-verifier |
+| 5 | printf v2 fixture && --lint --root testdata/v2-smoke | rc=0 | exit 0 — "gates: 1 edge (reserved, not gating)"; LINT: PASS | 2026-09-06 | opus-4.8[1m]-verifier |
+| 6 | go test . -run Demotion → grep -c PASS | ≥3 | exit 0 — 12 | 2026-09-06 | opus-4.8[1m]-verifier |
+| 7 | grep -c reconcile statusgen/README.md | ≥1 | exit 0 — 5 | 2026-09-06 | opus-4.8[1m]-verifier |
+| 8 | go vet ./... && no 'graphql' in the 4 brief files | exit 0 | exit 0 — vet clean; no graphql in ghfetch/reconcile/lifecycle/briefv2 | 2026-09-06 | opus-4.8[1m]-verifier |
+
+`RISK-VALUE: DERIVED — maxPages = 20 @ statusgen/ghfetch.go:104 (with perPage = 100 @ :103) — a hard cap against a malformed Link-header page loop; 20×100 = 2000 PRs bounds medici-finance/assay (~#468 highest, >4x headroom) so no witness is silently truncated; wrong value truncates but is reversible by edit+redeploy. Fail-closed guard: status != http.StatusOK → lookedAt=false @ ghfetch.go:111 (paired :156) — the literal is the 200 protocol constant, not a tunable; proven by row 3's clean 401→lookedAt=false. version:=1 legacy default @ reconcile.go:133 reversible, ranks last.`
+**VERIFY: FAIL — row 4 (stale Verify-row anchor), NOT an engine defect.** The reconcile engine is sound: 75 PR-witnessed cells derive correctly online (incl. this brief's own → PR #199), rows 1-3,5-8 PASS, the fail-closed 401 path works (row 3). Row 4 asserts a specific anchor (desk-containers/02 + PR #67 trailer) that live data no longer satisfies — PR #67 merged without a `Brief:` trailer (its board-flip was PR #74), so the engine correctly returns todo and the row's assertion fails. Per the verifier contract an unmet written expectation is not a pass → stays `implemented`; re-anchor row 4 to a trailer-carrying deliverable (or re-record PR #67's trailer). Counts in CFR (checked-fail on the artifact per the desk ledger ruling). Re-baseline routed.
+
 <!-- appended at implementation time -->
 
 Implemented on `feat/derived-board-03`. New files: `statusgen/lifecycle.go` (pure
