@@ -106,16 +106,21 @@ var Eligible = EligibilityVerdict{kind: kindEligible}
 
 // IneligibleTerminal builds a terminal-ineligible verdict: the item is finished for this run,
 // so the observer stops the run, releases the claim (making the item re-dispatchable), and
-// journals SUPERSEDED. reason is a short machine-readable tag (pr-merged, pr-closed,
-// board-row-<status>, claim-released, claim-reassigned).
+// journals SUPERSEDED. reason is a short machine-readable tag. Terminal is used ONLY when the
+// item is genuinely FINISHED for this run and no other party owns its claim: pr-merged,
+// pr-closed, a board row at implemented/verified/done, or claim-released (the ref is already
+// gone, so the delete is a no-op). A claim that moved to a DIFFERENT live holder, or a blocked
+// row, is Held, not Terminal — see IneligibleHeld.
 func IneligibleTerminal(reason string) EligibilityVerdict {
 	return EligibilityVerdict{kind: kindIneligibleTerminal, Reason: reason}
 }
 
 // IneligibleHeld builds a held-ineligible verdict: the run must stop, but the claim is NOT
-// released — a human or another desk owns the next move (a disposition, a needs-decision or
-// question label). Releasing it would let a fresh worker re-dispatch straight into the held
-// state. reason is one of superseded, resolved-elsewhere, needs-decision, question.
+// released — a human or another desk/holder owns the next move. Releasing it would either let a
+// fresh worker re-dispatch straight into the held state, or (for claim-reassigned) DELETE a
+// claim ref a DIFFERENT live holder now owns, re-freeing an item that holder is actively
+// working — a double-dispatch. reason is one of superseded, resolved-elsewhere, needs-decision,
+// question, claim-reassigned, board-row-blocked.
 func IneligibleHeld(reason string) EligibilityVerdict {
 	return EligibilityVerdict{kind: kindIneligibleHeld, Reason: reason}
 }
@@ -174,10 +179,17 @@ func Eligibility(c ClaimRecord, r EligibilityReaders) (EligibilityVerdict, error
 		return EligibilityVerdict{}, &BlindError{Source: "claim", Err: err}
 	}
 	if strings.TrimSpace(cur.Holder) == "" {
+		// The ref is gone/empty: our claim is already released. STOP + release, but the
+		// release is a no-op (nothing to delete), so there is no other holder to harm.
 		return IneligibleTerminal("claim-released"), nil
 	}
 	if cur.Holder != c.Holder {
-		return IneligibleTerminal("claim-reassigned"), nil
+		// The ref has moved to a DIFFERENT live holder — the "stolen underneath the run"
+		// case. STOP this run, but HELD, not Terminal: releasing here is an unconditional
+		// delete-by-key (doReclaim/DeleteRef has no expected-holder guard), which would
+		// delete the NEW holder's live claim and re-free an item they are working (a
+		// double-dispatch). The next move is the new holder's, not ours.
+		return IneligibleHeld("claim-reassigned"), nil
 	}
 
 	// 2. Board row (read from origin/main): a brief no longer in an active status
@@ -188,7 +200,14 @@ func Eligibility(c ClaimRecord, r EligibilityReaders) (EligibilityVerdict, error
 		return EligibilityVerdict{}, &BlindError{Source: "board-row", Err: err}
 	}
 	if !activeStatus(st) {
-		return IneligibleTerminal("board-row-" + strings.ToLower(strings.TrimSpace(string(st)))), nil
+		stNorm := strings.ToLower(strings.TrimSpace(string(st)))
+		if stNorm == "blocked" {
+			// blocked is a human-HOLD state: a human owns the next move, so STOP without
+			// releasing (Held). implemented/verified/done — and any unknown status a read
+			// could not classify — are FINISHED for this run: Terminal (stop + release).
+			return IneligibleHeld("board-row-blocked"), nil
+		}
+		return IneligibleTerminal("board-row-" + stNorm), nil
 	}
 
 	// 3. PR (the single point of failure): merged / closed is terminal; a recorded

@@ -217,16 +217,18 @@ func TestReconcile_AllBinaryScenarios(t *testing.T) {
 	}
 }
 
-// TestReconcile_ClaimReleasedAndReassigned covers the two claim-axis terminal reasons the
-// binary fixtures do not (they focus on the PR/board axes).
-func TestReconcile_ClaimReleasedAndReassigned(t *testing.T) {
+// TestReconcile_ClaimAxisVerdicts covers the two claim-axis reasons the binary fixtures do not
+// (they focus on the PR/board axes): a RELEASED claim is Terminal (the ref is already gone, so
+// the delete is a no-op), a REASSIGNED claim is Held (the ref belongs to a new live holder now).
+func TestReconcile_ClaimAxisVerdicts(t *testing.T) {
 	cases := []struct {
-		name   string
-		elig   *eligibilityFixture
-		reason string
+		name     string
+		elig     *eligibilityFixture
+		reason   string
+		terminal bool
 	}{
-		{"released", &eligibilityFixture{ClaimReleased: true}, "claim-released"},
-		{"reassigned", &eligibilityFixture{ClaimHolder: "someone-else"}, "claim-reassigned"},
+		{"released", &eligibilityFixture{ClaimReleased: true}, "claim-released", true},
+		{"reassigned", &eligibilityFixture{ClaimHolder: "someone-else"}, "claim-reassigned", false},
 	}
 	for _, tc := range cases {
 		tc := tc
@@ -235,9 +237,41 @@ func TestReconcile_ClaimReleasedAndReassigned(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if !v.Terminal() || v.Reason != tc.reason {
-				t.Fatalf("expected terminal %s, got %+v", tc.reason, v)
+			if v.Reason != tc.reason || v.Terminal() != tc.terminal {
+				t.Fatalf("expected reason=%s terminal=%v, got %+v", tc.reason, tc.terminal, v)
 			}
 		})
+	}
+}
+
+// TestReconcile_ClaimReassignedNeverReleases is the pin the review asked for: a claim-reassigned
+// verdict must STOP the run (arm the per-run stop) but must NEVER call reclaim — deleting the
+// claim ref by key would delete the NEW live holder's ref and re-free an item they are working
+// (a double-dispatch). The `reclaim` seam here is a t.Fatal, so any regression that reclassifies
+// claim-reassigned back to Terminal (release=true) genuinely fails this test.
+func TestReconcile_ClaimReassignedNeverReleases(t *testing.T) {
+	armed := false
+	arm := func(claimRecord, string) error { armed = true; return nil }
+	reclaim := func(claimRecord) error {
+		t.Fatal("a claim-reassigned verdict must NEVER release/delete the ref — it belongs to the new holder")
+		return nil
+	}
+	claims := []claimRecord{fixtureClaim("reassigned-01", &eligibilityFixture{ClaimHolder: "someone-else"})}
+	var out bytes.Buffer
+	eligible, results, anyBlind, err := reconcile(claims, fixtureEligibilitySource(), mustNow(t), false, reclaim, arm, &out)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if anyBlind || len(eligible) != 0 {
+		t.Fatalf("a reassigned claim is stopped, not eligible and not blind (eligible=%d blind=%v)", len(eligible), anyBlind)
+	}
+	if !armed {
+		t.Fatal("a claim-reassigned verdict must arm the per-run stop")
+	}
+	if len(results) != 1 || !results[0].Verdict.Held() || results[0].Action != "STOP" {
+		t.Fatalf("expected a single Held STOP result, got %+v", results)
+	}
+	if strings.Contains(out.String(), "RELEASE") {
+		t.Fatalf("a claim-reassigned line must never mention RELEASE: %q", out.String())
 	}
 }

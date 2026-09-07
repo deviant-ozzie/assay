@@ -56,8 +56,9 @@ func TestEligibility_PRClosedIsTerminal(t *testing.T) {
 	}
 }
 
-func TestEligibility_BoardRowFlippedIsTerminal(t *testing.T) {
-	for _, st := range []Status{"implemented", "verified", "done", "blocked"} {
+func TestEligibility_BoardRowFinishedIsTerminal(t *testing.T) {
+	// implemented/verified/done are FINISHED for this run — Terminal (stop + release).
+	for _, st := range []Status{"implemented", "verified", "done"} {
 		v, err := Eligibility(aliveClaim(), stubReaders("owner", st, PRState{Kind: deskkit.PROpen}))
 		if err != nil {
 			t.Fatalf("status %q: unexpected error: %v", st, err)
@@ -65,6 +66,17 @@ func TestEligibility_BoardRowFlippedIsTerminal(t *testing.T) {
 		if !v.Terminal() || v.Reason != "board-row-"+string(st) {
 			t.Fatalf("a %q board row must be IneligibleTerminal(board-row-%s), got %+v", st, st, v)
 		}
+	}
+}
+
+func TestEligibility_BoardRowBlockedIsHeld(t *testing.T) {
+	// blocked is a human-hold state — a human owns the next move, so STOP without release.
+	v, err := Eligibility(aliveClaim(), stubReaders("owner", "blocked", PRState{Kind: deskkit.PROpen}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !v.Held() || v.Reason != "board-row-blocked" {
+		t.Fatalf("a blocked board row must be IneligibleHeld(board-row-blocked) (stop, do NOT release), got %+v", v)
 	}
 }
 
@@ -78,13 +90,15 @@ func TestEligibility_ClaimReleasedIsTerminal(t *testing.T) {
 	}
 }
 
-func TestEligibility_ClaimReassignedIsTerminal(t *testing.T) {
+func TestEligibility_ClaimReassignedIsHeld(t *testing.T) {
+	// A claim moved to a DIFFERENT live holder must be HELD, not Terminal: releasing it would
+	// delete the new holder's live ref and re-free an item they are working (double-dispatch).
 	v, err := Eligibility(aliveClaim(), stubReaders("someone-else", "in-progress", PRState{Kind: deskkit.PROpen}))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !v.Terminal() || v.Reason != "claim-reassigned" {
-		t.Fatalf("a stolen claim must be IneligibleTerminal(claim-reassigned), got %+v", v)
+	if !v.Held() || v.Reason != "claim-reassigned" {
+		t.Fatalf("a stolen claim must be IneligibleHeld(claim-reassigned) (stop, do NOT release), got %+v", v)
 	}
 }
 
@@ -180,8 +194,8 @@ func TestReconcile_ClaimCheckedFirst(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a stolen claim must short-circuit BEFORE the failing board read, got error %v", err)
 	}
-	if !v.Terminal() || v.Reason != "claim-reassigned" {
-		t.Fatalf("expected IneligibleTerminal(claim-reassigned), got %+v", v)
+	if !v.Held() || v.Reason != "claim-reassigned" {
+		t.Fatalf("expected IneligibleHeld(claim-reassigned), got %+v", v)
 	}
 }
 

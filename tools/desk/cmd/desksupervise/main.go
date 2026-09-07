@@ -62,9 +62,11 @@ Reconciliation runs FIRST, before the liveness classification: for every dispatc
 joins three reads (the current claim holder, the item's board row on origin/main, and the PR's
 forge state — cheapest first, short-circuit on the first ineligible) and, for an INELIGIBLE
 claim, STOPS the run — arming the per-run stop flag and, for a TERMINAL verdict (PR merged/
-closed, board row flipped off todo/in-progress, claim released/stolen), also releasing the
-claim; a HELD verdict (a SUPERSEDED/RESOLVED-ELSEWHERE disposition, or a needs-decision/question
-label) stops the run WITHOUT releasing it. An INELIGIBLE claim is journalled SUPERSEDED and
+closed, board row at implemented/verified/done, or the claim already released), also releasing
+the claim; a HELD verdict (the claim reassigned to a different live holder, a blocked board row,
+a SUPERSEDED/RESOLVED-ELSEWHERE disposition, or a needs-decision/question label) stops the run
+WITHOUT releasing it — releasing there would delete a ref its new owner holds, or re-dispatch
+into a human-held state. An INELIGIBLE claim is journalled SUPERSEDED and
 skipped by the liveness step; a reconcile read that could-not-check keeps the run (RECONCILE-BLIND,
 action=BLIND(<source>)) and, like a liveness BLIND, makes the tick exit 6. Reconcile lines are:
 
