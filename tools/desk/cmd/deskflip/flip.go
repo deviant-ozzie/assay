@@ -646,11 +646,13 @@ func checkSecurityVerdict(o flipOpts, repo string, pr prInfo, files []fileInfo, 
 		riskClassed = true
 		reason = "carries the " + deskkit.SurfaceCoreLabel + " security-surface label"
 	}
-	// The owning brief's OWN declaration is a risk term (only widens, like the label
-	// above): a PR delivering a `gate: human` / `risk: … yes` brief is risk-classed even
-	// when its changed paths hit no compiled trigger, because the sensitivity is declared
-	// in the brief rather than in a touched path. An unresolvable brief contributes nothing
-	// and the path/visibility terms still decide — the brief term never waives the gate.
+	// The owning brief's OWN declaration is a risk term (only widens, like the label above):
+	// a PR delivering a `gate: human` / `risk: … yes` brief is risk-classed even when its
+	// changed paths hit no compiled trigger, because the sensitivity is declared in the brief
+	// rather than in a touched path. A brief that is DECLARED (a `Brief:` trailer is present)
+	// but cannot be resolved or read is UNVERIFIABLE, not clean — it too risk-classes, fail
+	// closed, so a declared brief we could not read cannot flip past the gate. Only a body
+	// with NO `Brief:` trailer leaves this term silent and the path/visibility terms deciding.
 	if !riskClassed {
 		if br := deskkit.BriefRiskFromBody(repo, pr.Body); br.RiskClassed {
 			riskClassed = true

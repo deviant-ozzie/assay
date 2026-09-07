@@ -2044,9 +2044,10 @@ func classifyPR(repo string, p prBase, ciRequired bool, briefScore map[string]in
 		}
 		// UNION (only widens): a diff we could not read in full — the trigger we did not
 		// see is exactly the one this gate exists to catch — OR a changed path in the
-		// trigger set OR the owning brief's OWN `gate: human` / `risk: yes` declaration.
-		// The brief term is what a code-level sensitive change declared in frontmatter
-		// (not in a touched path) is caught by.
+		// trigger set OR the owning brief term. The brief term catches a code-level
+		// sensitive change declared in frontmatter (not in a touched path), AND a DECLARED
+		// brief (a `Brief:` trailer present) that could not be resolved/read — unverifiable,
+		// fail closed. A body with no trailer leaves the brief term silent.
 		riskClassed = !complete || anyRiskPath(repo, files) || briefRisk.RiskClassed
 	}
 	in.riskClassed = riskClassed

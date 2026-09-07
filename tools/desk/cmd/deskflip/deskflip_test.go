@@ -695,6 +695,86 @@ func TestNonRiskBriefDoesNotRequireASecurityPass(t *testing.T) {
 	}
 }
 
+// A DECLARED brief (a `Brief:` trailer is present) that cannot be resolved or read is
+// UNVERIFIABLE, not clean — deskflip must REFUSE the flip on every such error path rather
+// than let it flip on the correctness review alone. Against the pre-fix code each of these
+// FLIPPED (fail-open); each must refuse now. The setup func prepares the filesystem +
+// DESK_ROOTS for the case; the PR touches no trigger path and has a clean correctness
+// approval at head, so the ONLY thing that can refuse it is the brief term.
+func TestDeclaredButUnresolvableBriefRefusesTheFlip(t *testing.T) {
+	humanGated := "---\ngate: human\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}\n---\nbody"
+	cases := []struct {
+		name  string
+		body  string
+		setup func(t *testing.T) // sets DESK_ROOTS and any fixture files
+	}{
+		{
+			name: "glob no-match (declared brief has no file)",
+			body: "Brief: example-stream/99\n",
+			setup: func(t *testing.T) {
+				root := t.TempDir()
+				if err := os.MkdirAll(filepath.Join(root, "docs", "streams", "example-stream"), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				t.Setenv(deskkit.RootsEnv, privateCIRepo+"="+root)
+			},
+		},
+		{
+			name: "no configured root for the repo",
+			body: "Brief: example-stream/15\n",
+			setup: func(t *testing.T) {
+				// A malformed DESK_ROOTS makes ConfiguredRoots refuse, so RootForRepo yields ""
+				// for the target repo — the "no configured root" path — without this test having
+				// to name another repo.
+				t.Setenv(deskkit.RootsEnv, "this-is-not-a-valid-roots-spec")
+			},
+		},
+		{
+			name: "unreadable brief file (path is a directory)",
+			body: "Brief: example-stream/15\n",
+			setup: func(t *testing.T) {
+				root := t.TempDir()
+				if err := os.MkdirAll(filepath.Join(root, "docs", "streams", "example-stream", "brief-15-thing.md"), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				t.Setenv(deskkit.RootsEnv, privateCIRepo+"="+root)
+			},
+		},
+		{
+			name: "malformed Brief: trailer value",
+			body: "Brief: not-a-valid-ref\n",
+			setup: func(t *testing.T) {
+				plantBriefRoot(t, privateCIRepo, "example-stream", "15", humanGated)
+			},
+		},
+		{
+			name: "resolved brief has no parseable frontmatter",
+			body: "Brief: example-stream/15\n",
+			setup: func(t *testing.T) {
+				plantBriefRoot(t, privateCIRepo, "example-stream", "15", "no frontmatter here\ngate: human\n")
+			},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			s := newStub()
+			s.pr.Body = c.body
+			s.files = greenFiles()
+			s.install(t)
+			c.setup(t)
+			s.reviews = approvalAtHead(t, headSHA)
+
+			if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitRefused {
+				t.Fatalf("declared-but-unresolvable brief rc = %d, want %d — an unverifiable brief must refuse",
+					rc, deskkit.ExitRefused)
+			}
+			if m := s.mutated(); len(m) != 0 {
+				t.Fatalf("a declared-but-unresolvable brief flipped with no security verdict: %v", m)
+			}
+		})
+	}
+}
+
 // A pass RETRACTED by a later fail at the same head is not green. The reduction is
 // order-sensitive on purpose.
 func TestLaterFailRetractsAnEarlierPassAtTheSameHead(t *testing.T) {
