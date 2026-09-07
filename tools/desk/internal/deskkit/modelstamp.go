@@ -512,6 +512,77 @@ func ForeignStampLabels(tl StampTimeline, isDispatcher func(applier string) bool
 	return out
 }
 
+// ReStampRemovals names every dispatched-* label CURRENTLY on the PR that a re-stamp to the
+// exact label set `want` must REMOVE before applying `want`, so that afterwards the PR
+// carries exactly `want`, each standing under the dispatcher.
+//
+// WHY IT TAKES `want` AND ForeignStampLabels DOES NOT. ForeignStampLabels answers only the
+// APPLIER question — which present stamp labels a non-dispatcher applied — because that is the
+// whole of the append-only repair for a stamp whose CONTENT is already the right pair. But a
+// re-dispatch also has to survive a stamp whose content is WRONG: an earlier run of the
+// dispatcher ITSELF may have left a different model slug, a stale tier, a second tier, or an
+// out-of-vocabulary half. Those labels were applied by the dispatcher, so ForeignStampLabels
+// leaves them — and adding the new pair on top cannot displace them, because labels are a SET,
+// so the stamp stays conflicting (ModelIndeterminate) and every authority-bearing write keeps
+// refusing. That is the "present-but-unreadable, re-dispatch cannot fix" deadlock: re-dispatch
+// reported OK yet the floor still refused, because the step only ever cleared FOREIGN labels.
+// A re-stamp that means to REPLACE a corrupt stamp with a good one must therefore clear every
+// present dispatched-* label that is not part of the pair it is about to apply, regardless of
+// who applied it — which is the dispatcher-identity recovery the floor's refusal already tells
+// the operator to run.
+//
+// A present dispatched-* label is removed when EITHER:
+//   - its name is NOT in `want` — a conflicting, stale, or malformed stamp label. It keeps the
+//     stamp unreadable no matter what `want` adds on top, and this holds REGARDLESS of the
+//     applier: a wrong label the dispatcher itself left on an earlier run is just as unreadable
+//     as a foreign one, and only removing it repairs the PR.
+//   - its name IS in `want` but its standing application is not the dispatcher's (foreign, or a
+//     present label the timeline read cannot attribute) — remove-and-re-apply under the
+//     dispatcher is the only repair an append-only timeline offers (the ForeignStampLabels
+//     case, subsumed here).
+//
+// A `want` label already standing under the dispatcher is NOT listed: leaving it and adding
+// over it is a harmless no-op, and removing it would churn the timeline and briefly leave the
+// PR unstamped for nothing.
+//
+// This never widens what the floor TRUSTS — it only lets the DISPATCHER replace a corrupt
+// stamp with a clean one. A stamp applied by anyone else still reads Indeterminate (the reader
+// is unchanged), and a re-stamp to a below-floor `want` tier still clears to a Stamped-but-
+// below state the floor refuses. The security guarantee is untouched; the deadlock is not.
+//
+// `want` is normalized the same way present labels are. A nil predicate vouches for nobody, so
+// every present stamp label whose name is in `want` is removed too — the same fail-closed
+// direction the reader takes.
+func ReStampRemovals(tl StampTimeline, want []string, isDispatcher func(applier string) bool) []string {
+	wantSet := map[string]bool{}
+	for _, w := range want {
+		wantSet[normLabel(w)] = true
+	}
+	appliers, unattributed := resolveStampAppliers(tl)
+	unattr := map[string]bool{}
+	for _, u := range unattributed {
+		unattr[u] = true
+	}
+	var out []string
+	for _, n := range presentStampLabels(tl.Present) {
+		switch {
+		case !wantSet[n]:
+			// Conflicting / stale / malformed stamp content — must go regardless of applier.
+			out = append(out, n)
+		case unattr[n]:
+			// A `want` label the timeline read cannot attribute — re-apply under the dispatcher.
+			out = append(out, n)
+		default:
+			// A `want` label whose standing application is foreign — remove so the re-apply takes.
+			if who := appliers[n]; isDispatcher == nil || !isDispatcher(who) {
+				out = append(out, n)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // DispatcherRole is the desk ROLE whose App identity is the dispatcher — the ONE declared
 // source of that answer, for the reader AND the writer.
 //

@@ -24,16 +24,36 @@ package deskkit
 //	attested BELOW the floor      -> REFUSE with remediation (FloorRefuse). The talk-33 rule:
 //	                                 say why AND what instead — escalate to a strong-tier
 //	                                 session; delegation downward is fine.
-//	NO attestation at all         -> proceed with a NOTICE (FloorNoticeAllow). The floor
+//	NO strength attestation       -> proceed with a NOTICE (FloorNoticeAllow). The floor
 //	                                 targets attested below-tier sessions; a human-driven
 //	                                 session and a pre-attestation dispatch carry no stamp and
 //	                                 must not be bricked. Absent is NOT the same as below-tier.
+//	                                 A `dispatched-tier:any` stamp reaches this outcome TOO —
+//	                                 see "WHY `any` IS ABSENT, NOT BELOW" below.
 //	attestation PRESENT-BUT-       -> REFUSE (FloorRefuse). A conflicting, incomplete, or
 //	  UNREADABLE (Indeterminate)      non-dispatcher-applied stamp cannot PROVE a strong tier,
 //	                                  and the floor fails closed: an unprovable tier is refused,
 //	                                  not admitted. This is distinct from "absent" — someone
 //	                                  applied a stamp this verb cannot trust, which is exactly
 //	                                  the forged-self-report case the floor exists to stop.
+//
+// WHY `any` IS ABSENT, NOT BELOW. The tier the dispatcher stamps is the brief's own
+// `exec-tier:` value, and in that schema `any` records the ABSENCE of a strength demand —
+// "this item does not require a particular runner" — never an assertion that a weak one was
+// launched. Reading it as "attested below strong" made the floor refuse every write on a PR
+// dispatched from an unremarkable brief, which is not the population the floor exists to
+// catch: it exists to catch a dispatch that ATTESTS a below-floor runner. So `any` carries
+// no strength claim and takes the same outcome as no stamp at all — proceed with a NOTICE.
+// The NOTICE NAMES the label, because "no attestation" is a confusing line to read on a PR
+// that visibly carries a dispatched-tier label, and the two ways of reaching this outcome
+// have different follow-ups (re-dispatch at a demanded tier vs nothing to fix).
+//
+// This loosens exactly ONE thing. A stamp that CONFLICTS, is INCOMPLETE, or was applied by a
+// non-dispatcher identity is still present-but-UNREADABLE and still refuses, `any` halves
+// included: unreadable is a different question from what a readable tier claims. And the
+// below-floor REFUSAL is not dead wording kept for its own sake — the tier vocabulary is
+// derived from the brief schema's `exec-tier:` set, so a future rung between `any` and
+// `strong` lands in that branch the moment it is added, with no further change here.
 //
 // THE OVERRIDE, and why it is loud. Incident recovery needs a way past the floor; a floor
 // with no escape can brick the review lane when the attestation pipeline itself is broken.
@@ -79,8 +99,9 @@ const (
 	FloorRefuse FloorOutcome = iota
 	// FloorAllow means the dispatch was attested at or above the floor: proceed.
 	FloorAllow
-	// FloorNoticeAllow means NO attestation was found: proceed, but the verb must SAY so —
-	// absent is not the same as cleared.
+	// FloorNoticeAllow means no STRENGTH attestation was found — either no stamp at all, or
+	// a stamp whose tier is `any`, which claims no strength: proceed, but the verb must SAY
+	// so — absent is not the same as cleared.
 	FloorNoticeAllow
 	// FloorOverrideAllow means the incident-recovery override was engaged: proceed, LOUDLY.
 	FloorOverrideAllow
@@ -134,6 +155,19 @@ func tierMeetsFloor(tier string) bool {
 	return tierRank(tier) >= tierRank(ModelFloorTier)
 }
 
+// NoStrengthClaimTier is the tier value that asserts NOTHING about the runner's strength.
+// It is the brief schema's "this item demands no particular tier" value, so a stamp
+// carrying it is an attestation of DISPATCH without an attestation of STRENGTH.
+const NoStrengthClaimTier = "any"
+
+// tierClaimsNoStrength reports whether an attested tier is the no-demand value. It is
+// case-insensitive and trims, matching how the readers normalize a label, so the spelling on
+// the label cannot change the decision. See the file comment's "WHY `any` IS ABSENT, NOT
+// BELOW" for why this is a separate question from tierMeetsFloor rather than a rank.
+func tierClaimsNoStrength(tier string) bool {
+	return strings.ToLower(strings.TrimSpace(tier)) == NoStrengthClaimTier
+}
+
 // ModelFloorOverrideEngaged reports whether the incident-recovery override env is set to a
 // non-empty value. Both verbs read it through this one helper so "engaged" has one meaning.
 func ModelFloorOverrideEngaged() bool {
@@ -173,6 +207,24 @@ func ModelCapabilityFloor(tl StampTimeline, isDispatcher func(applier string) bo
 				Message: fmt.Sprintf(
 					"model-capability floor: OK — the dispatch attested for this PR is tier %q (model %q), "+
 						"at or above the %s floor.", stamp.Tier, stamp.Model, ModelFloorTier),
+			}
+		}
+		if tierClaimsNoStrength(stamp.Tier) {
+			// Readable, dispatcher-applied, and claiming no strength: the same answer as an
+			// unstamped PR, with a message that names the label so the operator is not told
+			// "no attestation" about a PR that plainly carries one.
+			return FloorDecision{
+				Outcome: FloorNoticeAllow,
+				State:   state,
+				Stamp:   stamp,
+				Message: fmt.Sprintf(
+					"model-capability floor: NOTICE — this PR carries %s%s (model %q), which records no "+
+						"strength claim: the %s tier value is the brief schema's \"no particular runner "+
+						"demanded\", not an attestation that a below-%s session ran. The floor targets "+
+						"attested below-tier dispatches, so it reads this as UNATTESTED for strength and the "+
+						"write proceeds. Re-dispatch at tier %s if this write should be attested.",
+					DispatchedTierPrefix, NoStrengthClaimTier, stamp.Model, NoStrengthClaimTier,
+					ModelFloorTier, ModelFloorTier),
 			}
 		}
 		return FloorDecision{

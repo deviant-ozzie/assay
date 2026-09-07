@@ -173,6 +173,9 @@ type ghPullWire struct {
 		SHA string `json:"sha"`
 		Ref string `json:"ref"`
 	} `json:"head"`
+	Base struct {
+		Ref string `json:"ref"`
+	} `json:"base"`
 	HTMLURL   string `json:"html_url"`
 	UpdatedAt string `json:"updated_at"`
 	Labels    []struct {
@@ -256,6 +259,19 @@ type ghLabelWire struct {
 	Name string `json:"name"`
 }
 
+// ghRequiredStatusChecksWire is the branch-protection required-status-checks object. GitHub
+// carries the required contexts in TWO shapes for compatibility: the legacy flat `contexts`
+// list of names, and the newer `checks` array whose entries pair a context name with an
+// optional app id. Both are decoded and unioned so a context named in only one shape is
+// never missed — a required check the reader dropped would read as "nothing required", the
+// fail-open direction.
+type ghRequiredStatusChecksWire struct {
+	Contexts []string `json:"contexts"`
+	Checks   []struct {
+		Context string `json:"context"`
+	} `json:"checks"`
+}
+
 // ghTimelineWire is one entry of the issue/PR timeline. Only `labeled` events matter to the
 // applier-aware label-event read, and only the label name plus the actor that applied it.
 type ghTimelineWire struct {
@@ -304,6 +320,7 @@ func (g *GitHubForge) GetPullRequest(repo ForgeRepo, number int) (*PullRequest, 
 		Labels:       labels,
 		URL:          w.HTMLURL,
 		HeadRef:      w.Head.Ref,
+		BaseRef:      w.Base.Ref,
 	}, nil
 }
 
@@ -413,6 +430,52 @@ func (g *GitHubForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, e
 		if len(cr.CheckRuns) < forgeCIPerPage {
 			break
 		}
+	}
+	return out, nil
+}
+
+// RequiredStatusChecks reads the branch's required status-check contexts from GitHub branch
+// protection (`GET /repos/{o}/{r}/branches/{branch}/protection/required_status_checks`).
+//
+// The 404 IS the answer, not an error. GitHub returns 404 both for a branch with no
+// protection AND for a protected branch that requires no status checks; in either case
+// nothing gates the merge on a check, so the required set is EMPTY and no error is returned.
+// Every OTHER non-2xx (401/403 permission, 5xx, a parse failure) is could-not-check and is
+// returned as-is, so the caller fails closed — an absent rollup is never read as green off a
+// required-set the tool could not actually read.
+func (g *GitHubForge) RequiredStatusChecks(repo ForgeRepo, branch string) ([]string, error) {
+	branch = strings.TrimSpace(branch)
+	if branch == "" {
+		return nil, Unverifiable("cannot read the required status checks without a branch name — "+
+			"which branch's protection applies is undetermined, and undetermined is could-not-check", nil)
+	}
+	var w ghRequiredStatusChecksWire
+	path := fmt.Sprintf("/repos/%s/%s/branches/%s/protection/required_status_checks",
+		repo.Owner, repo.Name, url.PathEscape(branch))
+	if err := g.doJSON(http.MethodGet, path, nil, &w); err != nil {
+		if IsForgeNotFound(err) {
+			// No branch protection, or protection with no required checks: nothing is
+			// required to merge, so the required set is empty. This is the honest "green" for
+			// an absent rollup, and it is distinct from the error return below.
+			return nil, nil
+		}
+		return nil, err
+	}
+	seen := map[string]bool{}
+	out := make([]string, 0, len(w.Contexts)+len(w.Checks))
+	add := func(c string) {
+		c = strings.TrimSpace(c)
+		if c == "" || seen[c] {
+			return
+		}
+		seen[c] = true
+		out = append(out, c)
+	}
+	for _, c := range w.Contexts {
+		add(c)
+	}
+	for _, c := range w.Checks {
+		add(c.Context)
 	}
 	return out, nil
 }

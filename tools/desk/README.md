@@ -1185,7 +1185,7 @@ if it is unset. It absorbs the App-token mint from
 token **in memory only** — it mints fresh per invocation and never caches it to disk.
 
 ```bash
-deskpost review  <owner/repo> <pr>     --verdict approve|request-changes --head <full-40-char-sha> --body-file F
+deskpost review  <owner/repo> <pr>     --verdict approve|request-changes --head <full-40-or-64-char-sha> --body-file F
 deskpost comment <owner/repo> <number> --body-file F     # <number> = a PR **or** an issue
 deskpost ready   <owner/repo> <pr>
 
@@ -1232,7 +1232,9 @@ APPROVED at the current head" precondition cannot be satisfied by anyone but the
 Constraints in code:
 
 - **`review`** requires `--head` — the SHA the verdict was formed against, as the **FULL
-  40-char lowercase hex** SHA (`gh pr view <N> --json headRefOid -q .headRefOid`). An
+  40- (or 64-) char lowercase hex** SHA (`gh pr view <N> --json headRefOid -q .headRefOid`).
+  (64 is admitted because `isFullSHA` matches `deskkit`'s bodycheck definition of a git SHA;
+  GitHub serves SHA-1 today, so 40 is what a caller normally passes.) An
   abbreviated or otherwise malformed value is a **usage error (exit 2, nothing audited)**
   naming the form, not a head mismatch (#214): a short SHA can never equal the resolved
   head, so without the form gate it surfaced as a "mismatch" between two SHAs differing
@@ -2174,11 +2176,19 @@ rolling 24h". deskfile computes its own count over the audit log's `sessionTag` 
 AND the ordinary outward-write budget, which for `new` uses `AllowWriteRepoWide` (a create's
 number cannot be known in advance, the #439 lesson).
 
-Rotating `$CLAUDE_SESSION_ID` does reset the bucket — a new session is a new session — but
+**The tag is the FILING agent's, not the dispatcher's.** `deskkit.SessionTag()` reads
+`$DESK_SESSION` ahead of the harness's own session id, because a dispatched agent is a child
+process and inherits that id verbatim — every agent in a fan-out reports the dispatcher's.
+Keyed on the inherited id the budget would cover the whole fan-out rather than an agent: the
+first agent to file three would exhaust every sibling's, and the rest would be refused having
+filed nothing. Each agent gets its own 3; the cap itself is unchanged, so being dispatched
+alongside others buys no agent a larger budget.
+
+Rotating the session id does reset the bucket — a new session is a new session — but
 **every `new` audit line records the sessionTag it charged**, so rotating to buy budget
 leaves a trail rather than erasing one. That trace is the control here, not a hard block.
-Sessions with the variable unset all share the single `unknown` bucket (the conservative
-direction). deskfile **gates WHETHER and WHERE, never WHO**: the caller's ambient `gh`
+Sessions with no session variable set at all share the single `unknown` bucket (the
+conservative direction). deskfile **gates WHETHER and WHERE, never WHO**: the caller's ambient `gh`
 credential is the filing identity and no App token is ever minted. Repo scope comes from
 `deskkit.IsAllowedRepo` — there is no second repo list, and a test parses the sources to
 prove it.
