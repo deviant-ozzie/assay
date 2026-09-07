@@ -120,10 +120,10 @@ ASSAY_ALLOWED_REPOS=example-org/one:ci:private
 // unconfigured deployment resolve exactly the files it does today.
 func TestAppEnvPrefixAndBindingDefaults(t *testing.T) {
 	cases := []struct{ appName, wantPrefix string }{
-		{"reviewer-app", "REVIEWER"},   // default → historical key
+		{"reviewer-app", "REVIEWER"},     // default → historical key
 		{"issue-loop-app", "ISSUE_LOOP"}, // dashed role default
-		{"x-act", "X_ACT"},             // bound App-name
-		{"x-act-app", "X_ACT"},         // a bound name that itself ends -app
+		{"x-act", "X_ACT"},               // bound App-name
+		{"x-act-app", "X_ACT"},           // a bound name that itself ends -app
 	}
 	for _, c := range cases {
 		if got := AppEnvPrefix(c.appName); got != c.wantPrefix {
