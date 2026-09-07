@@ -162,6 +162,14 @@ func dispatch(o dispatchOpts) error {
 		return emitPrompt(o, prompt)
 	}
 
+	// PHANTOM CHECK — before the claim (phantom.go). A fresh worker dispatch whose brief already
+	// has an OPEN or MERGED PR is refused here, keyed on that PR's `Brief:` trailer rather than a
+	// derived branch name, so the branch-naming mismatch that let phantom rows through is closed. It
+	// wedges nothing (no claim yet) and is a no-op for a review/verifier dispatch or a --pr resume.
+	if err := phantomCheck(o, repo); err != nil {
+		return err
+	}
+
 	// Advisory write-scope overlap echo, BEFORE the claim — a coordination hint
 	// the operator sees, then the dispatch PROCEEDS. It never blocks, never gates the claim,
 	// and carries no exit code: a foreseeable merge collision on a shared file is surfaced now
