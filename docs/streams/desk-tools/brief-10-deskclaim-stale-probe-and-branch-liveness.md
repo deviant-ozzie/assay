@@ -145,6 +145,26 @@ Pre-mortem → detection map:
 | Forge-side `refs/dispatch/*` claims assumed covered | review-only — the README states the scope boundary in one sentence |
 
 ## Evidence
+### Non-implementer verifier run — VERIFY: PASS on brief-attributable rows (1-8,11); HELD on rows 9-10 (external whole-module test #555 + whole-dir gofmt drift, git-proven outside the diff) — 2026-09-06 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `5d20ff9`
+Runner ≠ implementer (first non-implementer run). Isolated worktree off origin/main. Offline; statusgen from source, not PATH. `gate: model`, all risk `no`, `irreversible: no`. Landing commit `349776b`.
+
+| # | command | expected | exit / observed | Date | Runner |
+|---|---------|----------|-----------------|------|--------|
+| 1 | tools/desk go build+vet | exit 0 | exit 0 clean | 2026-09-06 | opus-4.8[1m]-verifier |
+| 2 | go test ./cmd/deskclaim -run stale-verdict-old-branch-checked-out | exit 0 | exit 0, ok | 2026-09-06 | opus-4.8[1m]-verifier |
+| 3 | go test -run acquire-reclaims-old-unheld-branch-claim | exit 0 | exit 0, ok | 2026-09-06 | opus-4.8[1m]-verifier |
+| 4 | go test -run young-claim-is-live-whatever-the-signals | exit 0 | exit 0, ok | 2026-09-06 | opus-4.8[1m]-verifier |
+| 5 | go test -run probe-fails-closed-without-repo-or-beacon-dir | exit 0 | exit 0, ok | 2026-09-06 | opus-4.8[1m]-verifier |
+| 6 | go test -run beacon-keeps-claim-live | exit 0 | exit 0, ok | 2026-09-06 | opus-4.8[1m]-verifier |
+| 7 | go test -run stale-missing-and-unreadable-are-six | exit 0 | exit 0, ok | 2026-09-06 | opus-4.8[1m]-verifier |
+| 8 | go test ./internal/deskkit -run Acquire | exit 0 | exit 0, ok | 2026-09-06 | opus-4.8[1m]-verifier |
+| 9 | tools/desk go test ./... | exit 0 | COULD-NOT-CHECK (attribute-not-blame) — exit 1 ONLY on the two deskkit tests of the pre-existing whole-module red #555 (deskinstall unregistered; model-stamp floor), git-proven outside this brief's diff; dt10's only deskkit change (claim.go/Acquire) is green at row 8 | 2026-09-06 | opus-4.8[1m]-verifier |
+| 10 | gofmt -l cmd/deskclaim + internal/deskkit empty | exit 0 | COULD-NOT-CHECK (attribute-not-blame) — exit 1, 4 files flagged, ALL outside this brief's diff (audittoolkey.go/migrate.go/sizesurface*.go; git-proven); brief's own cmd/deskclaim + deskkit/claim.go gofmt-clean | 2026-09-06 | opus-4.8[1m]-verifier |
+| 11 | statusgen --lint | 0 | exit 0 — LINT: PASS (0 PROBLEM; the 9 "PROBLEM" hits are NOTICE explanatory text) | 2026-09-06 | opus-4.8[1m]-verifier |
+
+`RISK-VALUE: DERIVED — beaconFreshWindow = 60 * time.Minute @ tools/desk/cmd/deskclaim/liveness.go:36 — INTRODUCED here; byte-identical to the established beacon window @ tools/desk/cmd/deskwt/lockreclaim.go:73 which the brief requires it to mirror, so one definition of "session still there" governs both worktree-lock reclaim and claim reclaim; a divergent value would let one path judge a session live while the other steals its claim. Backed by two layers (the 120m age floor DefaultStaleClaim @ claim.go:49 + the flock'd in-place rewrite). DefaultStaleClaim is pre-existing (not introduced), out of derivation scope.`
+**VERIFY: PASS on all brief-attributable rows (1-8,11); HELD on rows 9-10 only.** The stale verb's fail-closed probe, age floor, 0/5/6 contract, and reclaim audit are verified; dt10's own files pass build/vet/test/gofmt. Rows 9-10 fail exclusively on git-proven external files (whole-module #555; whole-dir gofmt drift). Not a dt10 defect (no CFR row). SPILLOVER (not dt10's): #555's deskinstall-unregistered red + audittoolkey.go gofmt-uncleanliness look like a LIVE regression from commit 1c239ef (2026-09-06) — attribute to that change's owner.
+
 <!-- appended at implementation time: one witness row per Verify row —
      (command, exit code, output line(s), date, runner). -->
 
