@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -294,10 +293,10 @@ func livePRReader() func(repo string, n int) (loopengine.PRState, error) {
 func liveShowClaimReader(root, repo string) func(key string) (loopengine.ClaimRecord, error) {
 	return func(key string) (loopengine.ClaimRecord, error) {
 		script := filepath.Join(root, filepath.FromSlash(dispatchClaimScriptRel))
-		out, serr := exec.Command(script, "show", key, "--repo", repo).CombinedOutput()
+		out, serr := showClaim(script, key, repo)
 		if serr != nil {
-			return loopengine.ClaimRecord{}, fmt.Errorf("%s show %s: %s: %w", dispatchClaimScriptRel, key, strings.TrimSpace(string(out)), serr)
+			return loopengine.ClaimRecord{}, fmt.Errorf("%s show %s: %s: %w", dispatchClaimScriptRel, key, strings.TrimSpace(out), serr)
 		}
-		return loopengine.ClaimRecord{Key: key, Holder: claimShowField(claimOwnerFieldRe, string(out))}, nil
+		return loopengine.ClaimRecord{Key: key, Holder: claimShowField(claimOwnerFieldRe, out)}, nil
 	}
 }

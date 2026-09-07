@@ -10,7 +10,7 @@ import (
 // reconcile.go — the ELIGIBILITY reconciliation the observer runs for every in-flight
 // dispatch claim each tick, before the liveness evaluation.
 //
-// The motivating failure (see brief desk-supervision/03): "a merged or closed PR is DONE,
+// The motivating failure (the observer stream's eligibility-reconcile brief): "a merged or closed PR is DONE,
 // stop, never push its branch again" was PROSE a model had to remember, and it leaked — a
 // worker whose PR a human merged mid-run kept working, re-pushing to a merged branch and
 // resuming an already-merged PR. This turns that sentence into a mechanical check that fires

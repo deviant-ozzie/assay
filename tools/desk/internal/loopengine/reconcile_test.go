@@ -193,14 +193,14 @@ func TestReconcileParseBriefRowStatus(t *testing.T) {
 | 01 | [First](brief-01.md) | 0 | M | done | 2026-09-04 v | 2026-09-04 r |
 | 03 | [Third](brief-03.md) | 2 | M | in-progress | — | — |
 `
-	got, err := ParseBriefRowStatus(readme, "desk-supervision/03")
+	got, err := ParseBriefRowStatus(readme, "example-stream/03")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if got != "in-progress" {
 		t.Fatalf("status = %q, want in-progress", got)
 	}
-	if _, err := ParseBriefRowStatus(readme, "desk-supervision/99"); err == nil {
+	if _, err := ParseBriefRowStatus(readme, "example-stream/99"); err == nil {
 		t.Fatal("a missing row must be an error (could-not-check), not a guessed status")
 	}
 }
