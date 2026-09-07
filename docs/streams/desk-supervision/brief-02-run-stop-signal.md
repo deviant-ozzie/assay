@@ -121,7 +121,7 @@ the skill sweep, row 7 proves it is written (its live behaviour is review-only u
 harness smoke exists); "skill edit names a harness tool" → row 8.
 
 ## Evidence
-### Non-implementer verifier run — VERIFY: HELD (rows 1-8 PASS; row 9 could-not-check — statusgen --consumers blocked by an unrelated register README, assay#557) — 2026-09-06 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `67abbac`
+### Non-implementer verifier run — VERIFY: HELD (rows 1-8 PASS; row 9 could-not-check — statusgen --consumers blocked by an unrelated register README, #557) — 2026-09-06 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `67abbac`
 
 Runner ≠ implementer. Isolated worktree off origin/main. Offline (`KUBECONFIG=/dev/null`); desk rows module-scoped from `tools/desk`. Frontmatter: `gate: model`, all risk `no`, `irreversible: no`. Implementation: commit `5c28224` (per-run stop signal) + `39e3c7c`.
 
@@ -135,12 +135,12 @@ Runner ≠ implementer. Isolated worktree off origin/main. Offline (`KUBECONFIG=
 | 6 | go test ./cmd/desksupervise -run tick-arms-stop-before-release -v | exit 0 PASS | exit 0 — PASS | 2026-09-06 | opus-4.8[1m]-verifier |
 | 7 | grep -c 'status --stops' worker-desk/SKILL.md | ≥1 | exit 0 — 2 | 2026-09-06 | opus-4.8[1m]-verifier |
 | 8 | harnesslint (or SKIP-no-harnesslint) | exit 0, no FAIL | harnesslint absent tree-wide → designed fallback SKIP-no-harnesslint, exit 0 | 2026-09-06 | opus-4.8[1m]-verifier |
-| 9 | statusgen --root . --consumers --brief desk-supervision/02 | exit 0; no DISPROVED | COULD-NOT-CHECK — exit 2, aborts on docs/streams/decisions/README.md "no frontmatter" (register README, sdlc/05 b730bd8) BEFORE evaluating this brief; universal to --consumers (reproduced on ds/01). Filed medici-finance/assay#557 | 2026-09-06 | opus-4.8[1m]-verifier |
+| 9 | statusgen --root . --consumers --brief desk-supervision/02 | exit 0; no DISPROVED | COULD-NOT-CHECK — exit 2, aborts on docs/streams/decisions/README.md "no frontmatter" (register README, sdlc/05 b730bd8) BEFORE evaluating this brief; universal to --consumers (reproduced on ds/01). Filed #557 | 2026-09-06 | opus-4.8[1m]-verifier |
 
 `RISK-VALUE: DERIVED — ExitDisabled = 3 @ tools/desk/internal/deskkit/exitcodes.go:20 — the exit an armed STOP.run.<key> returns (killswitch.go:485); REUSED not introduced — a per-run stop must be indistinguishable from a loop-wide STOP to every desk verb, so existing exit-3 handling applies. Flag/dir modes 0o600/0o700 (the only new numeric literals) are owner-only least-privilege for control-plane flags. Reversible.`
 `RISK-VALUE: NAMED, NOT DERIVED — runStopPrefix = "STOP.run." @ tools/desk/internal/deskkit/killswitch.go:22 — a string, not a numeric bound; collision-safety with STOP / STOP.<loop> is enforced by the exact-match guard (n != runStopPrefix @ :282) and proven by row 4. The brief's safety property (a per-run flag can never mask a loop-wide DISABLED/STOP) is an ORDERING (runStopState resolved at guard() step 3, after loop-wide flags @ :476-486), not a literal — proven by row 4 PASS.`
 
-**VERIFY: HELD** — rows 1-8 PASS (per-run stop signal is ordered after the loop-wide flags and cannot mask them; --reason required; run-key recorded). Row 9 is COULD-NOT-CHECK: statusgen --consumers aborts on an unrelated malformed register README (assay#557), never evaluating this brief's consumers routing — a tooling/environmental block, not a ds/02 defect. Status stays `implemented`; flips once #557 clears and row 9 runs.
+**VERIFY: HELD** — rows 1-8 PASS (per-run stop signal is ordered after the loop-wide flags and cannot mask them; --reason required; run-key recorded). Row 9 is COULD-NOT-CHECK: statusgen --consumers aborts on an unrelated malformed register README (#557), never evaluating this brief's consumers routing — a tooling/environmental block, not a ds/02 defect. Status stays `implemented`; flips once #557 clears and row 9 runs.
 
 <!-- appended at implementation time: one row per Verify item —
      (command, exit code, output line(s) or hash, date, runner).
