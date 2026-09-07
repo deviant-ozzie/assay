@@ -100,14 +100,38 @@ ASSAY_ALLOWED_REPOS=example-org/one:ci:private
 	if !ok || want != "x-act[bot]" {
 		t.Fatalf("RoleAppLogin(reviewer) = (%q,%v), want (x-act[bot],true)", want, ok)
 	}
-	// A DIFFERENT App's login — one a token could well have been minted for — is not the
-	// login bound to reviewer, so the gate's `login == want` comparison refuses it.
-	if other := "y-act[bot]"; other == want {
-		t.Fatalf("a login for an App NOT bound to reviewer (%q) matched the reviewer identity — "+
-			"the trust gate must key on the roster binding, not on which App minted a token", other)
+
+	// accepts models the acceptance predicate EVERY caller runs against an actor login
+	// (isReviewerBot at deskpost/github.go, and its siblings): the role's bound App login is
+	// resolved from the roster, and an actor is accepted only when the role is bound AND the
+	// actor equals that login AND the actor is non-empty. Exercising it here — rather than
+	// comparing two string literals — makes the trust-gate keying FALSIFIABLE: the wrong-App
+	// case below would flip to accepted if the gate keyed on which App minted a token instead
+	// of on the roster binding, and the empty-actor case guards the deleted-author "" match.
+	accepts := func(role, actor string) bool {
+		w, k := RoleAppLogin(role)
+		return k && actor != "" && actor == w
 	}
-	// An UNBOUND role resolves to no login: ok=false is the refusal, and the empty login it
-	// returns must never be usable as an identity (RoleAppLogin's contract).
+
+	// The roster-bound login IS accepted for the role it is bound to.
+	if !accepts("reviewer", "x-act[bot]") {
+		t.Fatal("the roster-bound login x-act[bot] was not accepted for reviewer — the gate is " +
+			"not keying on the binding it should")
+	}
+	// A DIFFERENT App's login — one a token could well have been minted for — is REFUSED,
+	// because the accepted login is the roster-derived one, not whatever App holds a token.
+	if accepts("reviewer", "y-act[bot]") {
+		t.Fatal("a login for an App NOT bound to reviewer (y-act[bot]) was accepted for reviewer — " +
+			"the trust gate must key on the roster binding, not on which App minted a token")
+	}
+	// An UNBOUND role accepts NO login — not even the login that IS bound to another role —
+	// because RoleAppLogin returns ok=false and the predicate short-circuits.
+	if accepts("worker", "x-act[bot]") {
+		t.Fatal("an unbound role (worker) accepted a login — an unbound role is a refusal, so no " +
+			"actor may satisfy it")
+	}
+	// The refusal is in RoleAppLogin's return shape, and the empty login it hands back must
+	// never be usable as an identity (RoleAppLogin's contract; deposit for the "" == "" trap).
 	if login, ok := RoleAppLogin("worker"); ok || login != "" {
 		t.Fatalf("RoleAppLogin(worker) = (%q,%v) against a roster that does not bind worker, "+
 			"want (\"\",false) — an unbound role is a refusal, not an empty-login match", login, ok)
