@@ -46,7 +46,7 @@ _Held by per-stream caps: 3 brief(s) across 1 stream(s) — top: desk-tools. By 
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (35 desk-actionable of 45 total — 45 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (35 desk-actionable of 46 total — 46 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
@@ -68,6 +68,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | derived-board | 04 | implemented | 3000 | 2 | — | — | — |
 | harness-portability | 06 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 2500 | 1 | — | — | — |
+| forge-neutral | 05 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | windows-port | 00 | implemented | 2500 | 3 | — | — | — |
 | harness-portability | 12 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | windows-port | 01 | implemented | 2000 | 2 | — | — | — |
@@ -91,9 +92,8 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | statusgen | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 06 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 09 | implemented | 1000 | 0 | — | — | — |
-| windows-port | 04 | implemented | 1000 | 0 | — | — | — |
 
-### Awaiting human gate (4)
+### Awaiting human gate (5)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -101,6 +101,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 02 [exec:strong] | implemented | 4500 | 5 | — | — | — |
 | harness-portability | 03 | implemented | 4500 | 7 | — | — | — |
 | windows-port | 03 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| windows-port | 04 | implemented | 1000 | 0 | — | — | — |
 
 ### Awaiting implementer rework (6)
 
@@ -215,7 +216,7 @@ _None._
 - 02 Forge-qualified identity — roster entries, bot renderings, review corroboration — implemented (wave 2)
 - 03 Write verbs A — deskpost, deskreply, deskflip onto the resolver — implemented (wave 2)
 - 04 Write verbs B — deskpr, deskfile, deskclose, deskevidence onto the resolver — implemented (wave 2)
-- 05 Claim layer — the GitLab shape of `refs/dispatch/*` and its release — todo (wave 2)
+- 05 Claim layer — the GitLab shape of `refs/dispatch/*` and its release — implemented (wave 2)
 - 06 Read verbs — deskboard, issueboard, scanloop, reviewloop on the seam — todo (wave 3)
 - 07 statusgen acting identity — Evidence-actor and `verifyrun` name the forge identity that acted — todo (wave 3)
 - 08 statusgen forge-aware — `init` CI scaffold, auto-flip corroboration, honest claim decay — todo (wave 4)
