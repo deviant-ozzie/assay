@@ -116,10 +116,10 @@ not a differently-versioned installed binary):
 The spec defines Solo, a zero-App pilot tier in which every desk role runs on the operator's own
 user token — the role becomes a label rather than a GitHub identity, one login authors, reviews (by
 comment), and merges. That weakens the bot-attribution the desk tools otherwise enforce, so the mode
-is the driver's to confirm, not an implementer's to pick. The fuller decision surface (options,
-consequences, and the restored controls) lives in
-[`solo-identity.md` § Human decision](./solo-identity.md#human-decision); this is its canonical
-summary.
+is the driver's to confirm, not an implementer's to pick. The controls Solo restores in place of
+bot attribution are GitHub's own refusal to let a login approve its own pull request (a review by
+the PR author downgrades to a comment) and the human merge gate; where neither suffices — a repo
+whose ruleset requires a bot identity — Solo refuses rather than degrades.
 
 The options, and each one's consequence for the README tier table:
 
