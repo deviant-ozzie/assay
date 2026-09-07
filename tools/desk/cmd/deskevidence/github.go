@@ -38,17 +38,23 @@ var ghToken string
 var forgeAPIBase string
 
 // init installs deskevidence's already-minted verifier token as the GitHub custody step
-// deskkit.ForgeFor calls. The base URL is read HERE, at call time, so a per-test override still
-// reaches the Forge this produces.
+// deskkit.ForgeFor calls.
 func init() {
-	deskkit.SetGitHubCustodyMinter(func(role string, repo deskkit.ForgeRepo) (token, baseURL string, err error) {
-		if ghToken == "" {
-			return "", "", errors.New(
-				"refusing to reach the forge with no minted verifier token — deskevidence never falls back " +
-					"to an ambient forge identity/keyring")
-		}
-		return ghToken, forgeAPIBase, nil
-	})
+	deskkit.SetGitHubCustodyMinter(githubCustodyMint)
+}
+
+// githubCustodyMint is the GitHub custody step deskkit.ForgeFor's resolver calls: it hands
+// the token this tool has ALREADY minted (ghToken) to the backend, and refuses — never falls
+// back — when no token has been minted. The base URL is read HERE, at call time, so a per-test
+// override of forgeAPIBase still reaches the Forge the resolver produces. Named (rather than an
+// init-local closure) so the empty-token refusal is directly exercised by a test.
+func githubCustodyMint(role string, repo deskkit.ForgeRepo) (token, baseURL string, err error) {
+	if ghToken == "" {
+		return "", "", errors.New(
+			"refusing to reach the forge with no minted verifier token — deskevidence never falls back " +
+				"to an ambient forge identity/keyring")
+	}
+	return ghToken, forgeAPIBase, nil
 }
 
 // forgeForFn resolves the forge that serves a repo under the verifier App's custody. It is a
