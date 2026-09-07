@@ -29,7 +29,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 ## Next up
 
-_Held by per-stream caps: 5 brief(s) across 1 stream(s) — top: desk-tools. By stream: desk-tools (5). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
+_Held by per-stream caps: 4 brief(s) across 1 stream(s) — top: desk-tools. By stream: desk-tools (4). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
@@ -38,20 +38,21 @@ _Held by per-stream caps: 5 brief(s) across 1 stream(s) — top: desk-tools. By 
 | apps-installer | 08 — Solo identity mode — spec + decision: the desk verbs on the operator's own token [exec:strong] | 0 | 2000 |
 | desk-tools | 13 — `pr-monitor.sh` — a paced, per-repo head-sha / draft-state PR monitor shipped in the plugin tree | 1 | 1000 |
 | desk-tools | 14 — bodycheck — three measured false-positive classes into the negative corpus, plus `--explain` [exec:strong] | 1 | 1000 |
+| desk-tools | 15 — `deskdispatch --dry-run --worktree <path>` — render the prompt against an operator-supplied home | 1 | 1000 |
 | quality | 15 — learned riskscore graduation — JIT defect-prediction model [exec:strong] | 3 | 1000 |
 
 ## Intake queue
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (42 desk-actionable of 46 total — 46 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (43 desk-actionable of 47 total — 47 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (42)
+### Desk-actionable (43)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -97,6 +98,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | statusgen | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 06 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 09 | implemented | 1000 | 0 | — | — | — |
+| windows-port | 05 | implemented | 1000 | 0 | — | — | — |
 
 ### Awaiting human gate (3)
 
@@ -269,7 +271,7 @@ _None._
 - 01 Release build matrix — windows/amd64 + windows/arm64 + sha256s — implemented (wave 1)
 - 03 Windows install path — PowerShell-vs-Go-installer fork, then build — implemented (wave 2)
 - 04 Windows CI leg — statusgen --lint + a desk-verb smoke on Windows — todo (wave 2)
-- 05 Adoption-doc delta — the Windows adopter walkthrough — todo (wave 3)
+- 05 Adoption-doc delta — the Windows adopter walkthrough — implemented (wave 3)
 
 ## Done briefs
 
