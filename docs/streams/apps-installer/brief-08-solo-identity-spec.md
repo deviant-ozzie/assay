@@ -96,6 +96,21 @@ facts:
 ## Evidence
 <!-- appended at implementation time -->
 
+Implemented on branch `feat/apps-installer-08`. Deliverables: `solo-identity.md` (new, the spec),
+the apps-installer README row 08 flipped to `implemented` with the note pointing at the spec, and a
+changelog fragment. Verify table run locally against the branch tree
+(statusgen built from this repo's `statusgen/` source, matching CI's `assay-statusgen.yml` step,
+not a differently-versioned installed binary):
+
+| # | Command | Expect | Observed |
+|---|---------|--------|----------|
+| 1 | `test -f docs/streams/apps-installer/solo-identity.md && grep -cE -e '^## Human decision' …` | 1 | 1 |
+| 2 | `grep -cE -e 'desktoken' -e 'deskpost' -e 'deskpr' -e 'deskfile' -e 'deskevidence' -e 'deskflip' …` | ≥ 6 | 11 |
+| 3 | `grep -cE -e 'could-not-check' …` | ≥ 1 | 9 |
+| 4 | `grep -cE -e 'COMMENT' -e 'own pull request' …` | ≥ 2 | 8 |
+| 5 | `grep -cE -e 'ruleset' …` | ≥ 1 | 8 |
+| 6 | `statusgen --root . --lint` | exit 0 | exit 0 (LINT: PASS) |
+
 ## Review
 Gate: human (decision-trigger: spec). The driver's ruling is recorded on the decision issue and
 cited in the stream README; the implementation brief is authored only after it.
