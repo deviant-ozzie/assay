@@ -1,7 +1,9 @@
 package deskkit
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
@@ -1634,6 +1636,129 @@ func gitlabLabelColor(color string) string {
 		return c
 	}
 	return "#" + c
+}
+
+// --- File content (read / write on a branch) ---
+
+// ReadFile reads a file's content at a ref via the Repository Files API. GitLab returns the
+// content base64-encoded; the optimistic-lock id an update must cite is `last_commit_id`, which
+// this maps onto FileContent.SHA (the same opaque-id contract the GitHub blob sha carries). A
+// 404 propagates as a *ForgeAPIError (IsForgeNotFound true) via mapErr.
+func (g *GitLabForge) ReadFile(repo ForgeRepo, in ReadFileInput) (*FileContent, error) {
+	cl, err := g.client()
+	if err != nil {
+		return nil, err
+	}
+	path := fmt.Sprintf("/projects/%s/repository/files/%s", g.projectPath(repo), url.PathEscape(in.File))
+	f, _, ferr := cl.RepositoryFiles.GetFile(repo.Slug(), in.File, &gitlab.GetFileOptions{Ref: gitlab.Ptr(in.Ref)})
+	if ferr != nil {
+		return nil, g.mapErr(http.MethodGet, path, ferr)
+	}
+	decoded, derr := base64.StdEncoding.DecodeString(f.Content)
+	if derr != nil {
+		return nil, Unverifiable("cannot decode base64 content for "+in.File, derr)
+	}
+	sha := f.LastCommitID
+	if sha == "" {
+		sha = f.BlobID
+	}
+	return &FileContent{Content: decoded, SHA: sha, Exists: true}, nil
+}
+
+// WriteFile writes a file's whole content on a branch via the Repository Files API.
+//
+// The DEFAULT-BRANCH WRITABILITY PROBE is the GitLab half of the Evidence-lane design. The
+// GitLab pilot found the default branch takes no direct write for any identity, the owner
+// included, so a direct write to it is refused with the DefaultBranchNotWritable sentinel:
+// nothing is written and no write call is made (the caller lands the change on a side branch
+// instead). The default branch is read from the project rather than guessed.
+//
+// StartBranch is GitLab's inline branch-creation: a write to a branch that does not yet exist,
+// with StartBranch naming the base, creates the branch AS PART of the write — which is why the
+// Evidence-lane fallback needs no separate CreateRef op. The idempotency read and append-only
+// shrink guard are folded in exactly as the GitHub backend's, so the two behave the same.
+func (g *GitLabForge) WriteFile(repo ForgeRepo, in WriteFileInput) (*WriteFileResult, error) {
+	cl, err := g.client()
+	if err != nil {
+		return nil, err
+	}
+	proj := g.projectPath(repo)
+	res := &WriteFileResult{}
+
+	projPath := fmt.Sprintf("/projects/%s", proj)
+	p, _, perr := cl.Projects.GetProject(repo.Slug(), nil)
+	if perr != nil {
+		return nil, g.mapErr(http.MethodGet, projPath, perr)
+	}
+	if p.DefaultBranch != "" && in.Branch == p.DefaultBranch {
+		res.DefaultBranchNotWritable = true
+		return res, nil
+	}
+
+	var priorSHA string
+	var priorContent []byte
+	exists := false
+	cur, rerr := g.ReadFile(repo, ReadFileInput{File: in.File, Ref: in.Branch})
+	if rerr != nil {
+		if !IsForgeNotFound(rerr) {
+			return nil, rerr
+		}
+	} else {
+		priorSHA, priorContent, exists = cur.SHA, cur.Content, true
+	}
+
+	if in.AppendOnly {
+		res.PriorRows = forgeRowCount(priorContent)
+		res.Rows = forgeRowCount(in.Content)
+	}
+	if exists && bytes.Equal(priorContent, in.Content) {
+		res.SHA = priorSHA
+		return res, nil
+	}
+	if in.AppendOnly && !in.AllowShrink && exists && res.Rows < res.PriorRows {
+		return nil, Refused(fmt.Sprintf(
+			"refusing an append-only write to %s on %s that would SHRINK it from %d to %d row(s) — "+
+				"almost always a stale-base or wrong-file write; pass AllowShrink when the reduction is intended",
+			in.File, in.Branch, res.PriorRows, res.Rows))
+	}
+
+	filePath := fmt.Sprintf("/projects/%s/repository/files/%s", proj, url.PathEscape(in.File))
+	encoded := base64.StdEncoding.EncodeToString(in.Content)
+	if exists {
+		opt := &gitlab.UpdateFileOptions{
+			Branch:        gitlab.Ptr(in.Branch),
+			Content:       gitlab.Ptr(encoded),
+			Encoding:      gitlab.Ptr("base64"),
+			CommitMessage: gitlab.Ptr(in.Message),
+		}
+		if priorSHA != "" {
+			opt.LastCommitID = gitlab.Ptr(priorSHA)
+		}
+		if in.StartBranch != "" {
+			opt.StartBranch = gitlab.Ptr(in.StartBranch)
+		}
+		if _, _, uerr := cl.RepositoryFiles.UpdateFile(repo.Slug(), in.File, opt); uerr != nil {
+			return nil, g.mapErr(http.MethodPut, filePath, uerr)
+		}
+	} else {
+		opt := &gitlab.CreateFileOptions{
+			Branch:        gitlab.Ptr(in.Branch),
+			Content:       gitlab.Ptr(encoded),
+			Encoding:      gitlab.Ptr("base64"),
+			CommitMessage: gitlab.Ptr(in.Message),
+		}
+		if in.StartBranch != "" {
+			opt.StartBranch = gitlab.Ptr(in.StartBranch)
+		}
+		if _, _, cerr := cl.RepositoryFiles.CreateFile(repo.Slug(), in.File, opt); cerr != nil {
+			return nil, g.mapErr(http.MethodPost, filePath, cerr)
+		}
+	}
+	res.Changed = true
+	// GitLab's file-write response (FileInfo) carries neither a commit sha nor an author, so
+	// SHA and Author are left empty — the honest could-not-check, never a guessed value. A
+	// caller that needs the new lock id reads it back with ReadFile.
+	return res, nil
 }
 
 // --- Identity / transport ---
