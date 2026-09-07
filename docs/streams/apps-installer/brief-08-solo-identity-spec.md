@@ -136,4 +136,6 @@ This spec is written to that ruling and does not re-ask it.
 
 ## Review
 Gate: human (decision-trigger: spec). The driver's ruling is recorded on the decision issue and
-cited in the stream README; the implementation brief is authored only after it.
+cited in the stream README; the implementation brief is authored only after it. The spec-landing
+follow-on — authoring that Solo implementation brief (strong tier) — is filed and work-ready as
+#607.

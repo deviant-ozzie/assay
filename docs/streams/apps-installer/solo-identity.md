@@ -148,7 +148,7 @@ Solo refuses — rather than degrades — in these cases:
 A refusal in Solo is a signal, not a wall: each one names the exact control the mode cannot provide,
 which is also the operator's cue that they have outgrown the tier ([§7](#7-exit-criteria)).
 
-## 7. Exit criteria — when the operator has outgrown Solo
+## 7. Exit criteria
 
 Solo is a ramp; these are the signals, visible to the operator, that it is time to move to
 **Read + Act** (or Full suite):

@@ -69,7 +69,7 @@ Ruling for 08 is already recorded on #467 (2026-09-05): adopt Solo as specified,
 page and runbook must say plainly that Solo means the operator does far more than in the other
 tiers — 07 carries that callout. The spec itself is now written:
 [`solo-identity.md`](./solo-identity.md); its implementation brief is authored after the ruling and
-cites both #467 and that spec.
+cites both #467 and that spec. That follow-on authoring task is filed and work-ready as #607.
 
 ## Critical path
 
