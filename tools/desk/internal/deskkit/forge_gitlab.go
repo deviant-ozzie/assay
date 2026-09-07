@@ -1318,8 +1318,7 @@ func (g *GitLabForge) CloseIssue(repo ForgeRepo, number int, stateReason string)
 // the refusal below is the honest half of it.
 //
 // GitHub exposes a general git-data ref API (`DELETE /git/refs/<anything>`), so it can delete
-// a ref in any namespace — including the `refs/dispatch/*` namespace the desk's claim
-// mechanism uses. GitLab Community Edition exposes no general ref-delete endpoint at all: the
+// a ref in any namespace. GitLab Community Edition exposes no general ref-delete endpoint at all: the
 // Branches API (`DELETE /projects/:id/repository/branches/:branch`, Tier: Free/Premium/
 // Ultimate — https://docs.gitlab.com/api/branches/) deletes a BRANCH, and tags have their own
 // endpoint. There is no CE endpoint, at any tier, for a ref outside those namespaces.
@@ -1327,8 +1326,16 @@ func (g *GitLabForge) CloseIssue(repo ForgeRepo, number int, stateReason string)
 // So this backend serves "heads/<branch>" from the Branches API and REFUSES every other
 // namespace as could-not-check, naming the gap. It does not silently succeed, and it does not
 // invent a ref-shaped call the instance would answer with an HTML 404 — either would report a
-// claim as released when it is still held. A profile that needs claim refs on GitLab uses a
-// branch-namespaced claim; that is a workflow decision, not something a backend may paper over.
+// claim as released when it is still held.
+//
+// The dispatch claim is the one caller this limit actually bound, and the answer was to move
+// the claim rather than to widen the backend: a claim now lives at deskkit.ClaimRefsPrefix,
+// INSIDE the branch namespace, so the release round-trips here on the same Free-tier endpoint
+// GitHub's git-data delete maps to (the claim-shape decision record of the stream that made it
+// carries the decision, the live reads it turns on, and the costs it accepts). The refusal below therefore
+// stands unweakened — it is what a caller reaching for a namespace GitLab cannot serve still
+// gets — and it now names the claim namespace, because "outside refs/heads" is precisely the
+// mistake a caller carrying a pre-move claim ref is making.
 func (g *GitLabForge) DeleteRef(repo ForgeRepo, ref string) error {
 	clean, err := ValidateRefPath(ref)
 	if err != nil {
@@ -1338,8 +1345,9 @@ func (g *GitLabForge) DeleteRef(repo ForgeRepo, ref string) error {
 	if !ok {
 		return Unverifiable(fmt.Sprintf(
 			"could-not-check: GitLab exposes no general ref-delete endpoint, so DeleteRef cannot serve %q — "+
-				"only the \"heads/<branch>\" namespace maps (the Branches API); a claim held outside refs/heads "+
-				"has no CE equivalent and is NOT reported released", ref), nil)
+				"only the \"heads/<branch>\" namespace maps (the Branches API); a ref held outside refs/heads "+
+				"has no CE equivalent and is NOT reported released. A dispatch claim belongs at %s<key> "+
+				"(deskkit.ClaimRefPath), which IS inside that namespace", ref, ClaimRefsPrefix), nil)
 	}
 	cl, cerr := g.client()
 	if cerr != nil {

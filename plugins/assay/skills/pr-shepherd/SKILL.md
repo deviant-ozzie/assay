@@ -24,7 +24,7 @@ verdict on the work is the review desk's. Between those two sits this skill.
 
 Before touching the branch, verify no other session or worker owns it:
 
-- **Dispatch claims**: `git ls-remote origin 'refs/dispatch/*'` — a live claim naming this
+- **Dispatch claims**: `git ls-remote origin 'refs/heads/dispatch/*'` — a live claim naming this
   PR's brief/issue key means it is owned; skip it. The claim is a **forge ref**, so this read
   sees dispatchers on other machines too, which a machine-local claims directory never did.
   The repo's own `dispatch-claim` helper's `show <key>` verb prints the holder, state and age:
