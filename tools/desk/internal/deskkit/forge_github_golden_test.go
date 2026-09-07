@@ -2,6 +2,7 @@ package deskkit
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"net/http"
@@ -65,6 +66,13 @@ type goldenServer struct {
 	labelCreateStatus int
 	// labelDeleteStatus likewise: 404 is "already absent", the success case for a removal.
 	labelDeleteStatus int
+	// contentsGet is the Contents-API read response (ReadFile / WriteFile idempotency read).
+	// When contentsGetStatus is set (e.g. 404), the GET returns that status instead — the
+	// "file absent → create" path.
+	contentsGet       map[string]any
+	contentsGetStatus int
+	// contentsPut is the Contents-API write response (WriteFile). Served with 201.
+	contentsPut map[string]any
 	// forceStatus, when set for a path suffix, returns that HTTP status (error-mapping cases).
 	forceStatus map[string]int
 	// bigReviewPages: when true, /reviews returns 100 entries on page 1, 1 on page 2.
@@ -89,6 +97,7 @@ var (
 	gPRLabels  = regexp.MustCompile(`/issues/[0-9]+/labels$`)
 	gPRLabel1  = regexp.MustCompile(`/issues/[0-9]+/labels/[^/]+$`)
 	gRepoLabel = regexp.MustCompile(`^/repos/[^/]+/[^/]+/labels$`)
+	gContents  = regexp.MustCompile(`^/repos/[^/]+/[^/]+/contents/`)
 )
 
 func (s *goldenServer) handler(w http.ResponseWriter, r *http.Request) {
@@ -109,6 +118,15 @@ func (s *goldenServer) handler(w http.ResponseWriter, r *http.Request) {
 	page := r.URL.Query().Get("page")
 
 	switch {
+	case r.Method == http.MethodGet && gContents.MatchString(path):
+		if s.contentsGetStatus != 0 {
+			w.WriteHeader(s.contentsGetStatus)
+			return
+		}
+		enc(s.contentsGet)
+	case r.Method == http.MethodPut && gContents.MatchString(path):
+		w.WriteHeader(http.StatusCreated)
+		enc(s.contentsPut)
 	case r.Method == http.MethodPost && path == "/graphql":
 		enc(s.graphql)
 	case r.Method == http.MethodGet && gTimeline.MatchString(path):
@@ -220,6 +238,9 @@ func readAllCompact(r *http.Request) (json.RawMessage, error) {
 	}
 	return json.RawMessage(out.Bytes()), nil
 }
+
+// ghB64 renders s as the base64 the Contents API returns for file content.
+func ghB64(s string) string { return base64.StdEncoding.EncodeToString([]byte(s)) }
 
 func makeReviews(n int) []map[string]any {
 	out := make([]map[string]any, 0, n)
@@ -548,6 +569,53 @@ func TestForgeGithubGolden(t *testing.T) {
 			setup: func(s *goldenServer) {},
 			run: func(f *GitHubForge) (any, error) {
 				return nil, f.DeleteRef(forgeTestRepo, "heads/../../branches/main/protection")
+			},
+		},
+		{
+			name: "read_file",
+			setup: func(s *goldenServer) {
+				s.contentsGet = map[string]any{"sha": "blob-1", "content": ghB64("row one\n")}
+			},
+			run: func(f *GitHubForge) (any, error) {
+				return f.ReadFile(forgeTestRepo, ReadFileInput{File: "EVIDENCE.md", Ref: "feat/x"})
+			},
+		},
+		{
+			// Update path: the idempotency read finds a DIFFERENT content, so the PUT carries the
+			// prior blob sha. GitHub's default branch is directly writable by the App (carve-out),
+			// so no sentinel — the write lands on the branch directly.
+			name: "write_file_updates_existing",
+			setup: func(s *goldenServer) {
+				s.contentsGet = map[string]any{"sha": "blob-1", "content": ghB64("row one\n")}
+				s.contentsPut = map[string]any{
+					"content": map[string]any{"sha": "blob-2"},
+					"commit": map[string]any{"sha": "c0ffee", "author": map[string]any{
+						"name": "assay-verifier-app[bot]", "email": "1+assay-verifier-app[bot]@users.noreply.github.com"}},
+				}
+			},
+			run: func(f *GitHubForge) (any, error) {
+				return f.WriteFile(forgeTestRepo, WriteFileInput{
+					File: "EVIDENCE.md", Branch: "feat/x", Content: []byte("row one\nrow two\n"),
+					Message: "Evidence: verification row",
+				})
+			},
+		},
+		{
+			// Create path: the read 404s (file absent), so the PUT carries no prior sha.
+			name: "write_file_creates_when_absent",
+			setup: func(s *goldenServer) {
+				s.contentsGetStatus = http.StatusNotFound
+				s.contentsPut = map[string]any{
+					"content": map[string]any{"sha": "blob-new"},
+					"commit": map[string]any{"sha": "c0ffee", "author": map[string]any{
+						"name": "assay-verifier-app[bot]", "email": "1+assay-verifier-app[bot]@users.noreply.github.com"}},
+				}
+			},
+			run: func(f *GitHubForge) (any, error) {
+				return f.WriteFile(forgeTestRepo, WriteFileInput{
+					File: "EVIDENCE.md", Branch: "feat/x", Content: []byte("row one\n"),
+					Message: "Evidence: verification row",
+				})
 			},
 		},
 		{
