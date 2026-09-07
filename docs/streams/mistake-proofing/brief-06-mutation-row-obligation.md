@@ -114,6 +114,23 @@ facts:
 | 8 | check | `git grep -c 'adequacy' -- statusgen/` | exit 0; a non-zero count — the presence-not-adequacy boundary is stated in the source the failure message is built from. Zero hits today (2026-08-25 @ `657cab1`) |
 
 ## Evidence
+### Non-implementer verifier run — VERIFY: PASS (8/8 rows) — 2026-09-06 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `5d20ff9`
+Runner ≠ implementer. Isolated worktree off origin/main. Offline (`KUBECONFIG=/dev/null`); statusgen rows module-scoped from `statusgen/`. `gate: model`, all risk `no`. Rows 1/8 are DEREFERENCE rows whose authoring-time result inverts on landing; both show the correct post-landing state.
+
+| # | command | expected | exit / observed | Date | Runner |
+|---|---------|----------|-----------------|------|--------|
+| 1 | git grep -ci mutation statusgen/rowclass.go | present at impl | exit 0 — rowclass.go:12 (12 matches) | 2026-09-06 | opus-4.8[1m]-verifier |
+| 2 | test -d tools/desk/cmd/muhar | exit 0 | exit 0 | 2026-09-06 | opus-4.8[1m]-verifier |
+| 3 | git grep -n COLD statusgen/lintaudit.go | exit 0 | exit 0 — lintaudit.go:21, :179 (COLD retirement candidate) | 2026-09-06 | opus-4.8[1m]-verifier |
+| 4 | go test ./ -run MutationObligation (statusgen) | exit 0 | exit 0, ok — 3 subtests + fires-on-added-check PASS | 2026-09-06 | opus-4.8[1m]-verifier |
+| 5 | go test -run MutationObligationFiresOnAddedCheck | exit 0; positive control | exit 0 PASS (added-check-no-row fatal / with-row silent / no-check-shape silent) | 2026-09-06 | opus-4.8[1m]-verifier |
+| 6 | go test -run MutationObligationCouldNotCheckIsNotSilence | exit 0 | exit 0 PASS (unavailable diff = conspicuous NOTICE) | 2026-09-06 | opus-4.8[1m]-verifier |
+| 7 | go test -run MutationObligationInheritedCorpusStaysAdvisory | exit 0 | exit 0 PASS (promotion transition-scoped) | 2026-09-06 | opus-4.8[1m]-verifier |
+| 8 | git grep -c adequacy statusgen/ | non-zero at impl | exit 0 — 7 total (main.go, newbrief.go, obligationderivation.go, rowclass.go) | 2026-09-06 | opus-4.8[1m]-verifier |
+
+`RISK-VALUE: DERIVED — mutationObligationFatal = true @ statusgen/obligationderivation.go:75 — the brief's stated purpose (promote the mutation-row PRESENCE obligation from advisory to fatal); correctly narrowed (obligationDerivationFatal stays false @ :61 so flow/dereference remain advisory per 03's phasing; the check-shaped path set is an explicit 4-entry enumeration @ :121-140, not an inline regex). Reversible.`
+**VERIFY: PASS** — all 8 rows PASS on merged main `5d20ff9`; the severity-promotion constant DERIVED. `gate: model`, all risk `no`.
+
 <!-- appended at implementation time: one row per Verify item —
      (command, exit code, output line(s) or hash, date, runner).
      "verified" status in the stream README requires this section filled

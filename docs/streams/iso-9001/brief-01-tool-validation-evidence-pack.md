@@ -146,6 +146,26 @@ facts:
 | 11 | `cd statusgen && go run . --root .. --lint` | exit 0 — the tree still lints clean, including the link check over every backticked path this brief's files cite |
 
 ## Evidence
+### Non-implementer verifier run — VERIFY: FAIL (row 3 — stale frozen-literal glob aged out by repo growth; deliverable sound) — 2026-09-06 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `5d20ff9`
+Runner ≠ implementer. Isolated worktree off origin/main. Offline (`KUBECONFIG=/dev/null`); go rows module-scoped. `gate: model`, all risk `no`. Rows 1/2 are DEREFERENCE rows that invert on landing (both show correct post-landing state).
+
+| # | command | expected | exit / observed | Date | Runner |
+|---|---------|----------|-----------------|------|--------|
+| 1 | git grep -n tool-validation .github/workflows/release.yml | ≥1 at impl | exit 0 — ~19 hits incl. assemble @ L916, upload @ L1081 | 2026-09-06 | opus-4.8[1m]-verifier |
+| 2 | test -d tools/toolvalidation | exit 0 at impl | exit 0 — module home present (main/pack/render/report/header + tests) | 2026-09-06 | opus-4.8[1m]-verifier |
+| 3 | git ls-files tools/desk/*mutations*.json | exactly six paths | **FAIL — 16 paths.** STALE FROZEN-LITERAL: the impl deliberately declares SEVEN release controls (declaredControls main.go:76-120: +deskclose 7th), row 4 confirms 7 NOT-CAUGHT assertions, all 7 declared specs exist; the glob also catches 9 non-release mutation fixtures. The declared-set drift (on-disk-not-declared) is enumerated by the assembler by design (DeclaredSetDriftIsReportedBothWays, row 8-equivalent). Deliverable sound; row needs re-baseline to the declared set (7) or decouple from the glob | 2026-09-06 | opus-4.8[1m]-verifier |
+| 4 | git grep -c 'NOT CAUGHT' release.yml | ≥6 | exit 0 — count 7 (release-blocking assertions stand) | 2026-09-06 | opus-4.8[1m]-verifier |
+| 5 | go test ./... (toolvalidation) | exit 0 | exit 0 — ok toolvalidation | 2026-09-06 | opus-4.8[1m]-verifier |
+| 6 | go test -run MissingReportIsOmittedAndExitsThree | exit 0 | exit 0 PASS (main_test.go:113) | 2026-09-06 | opus-4.8[1m]-verifier |
+| 7 | go test -run HarnessBrokenIsNotAPass | exit 0 | exit 0 PASS (main_test.go:144) | 2026-09-06 | opus-4.8[1m]-verifier |
+| 8 | go test -run DeclaredSetDriftIsReportedBothWays | exit 0 | exit 0 PASS (main_test.go:182) | 2026-09-06 | opus-4.8[1m]-verifier |
+| 9 | build tv + run against testdata/complete -tag v0.0.0-test | prints 0; .md + .json in out | exit 0 — "pack complete — 7 declared controls"; .md (20698B) + .json (28366B) | 2026-09-06 | opus-4.8[1m]-verifier |
+| 10 | git grep -cE 'audit opinion'/'does not' tools/toolvalidation/ | non-zero | exit 0 — hits across header/main/render/report | 2026-09-06 | opus-4.8[1m]-verifier |
+| 11 | statusgen --root .. --lint | exit 0 | exit 0 — LINT: PASS (NOTICEs only; assay#557 abort did not occur here) | 2026-09-06 | opus-4.8[1m]-verifier |
+
+`RISK-VALUE: DERIVED — exit 3 = INCOMPLETE @ tools/toolvalidation/main.go:189 — matches docs/evidence-bundle.md's pinned exit contract ("3 = exported but INCOMPLETE; a silently incomplete compliance bundle is worse than a failed export"); fails the release step per task 5. Companion muhar-exit-2 → could-not-check @ pack.go:132-140 DERIVED from muhar's contract (2 = HARNESS BROKEN → every control in that spec could-not-check, never pass/fail). Shards=3 reversible, ranks last.`
+**VERIFY: FAIL — row 3 (stale frozen-literal), NOT a deliverable defect.** 10/11 rows PASS; the artifact declares 7 controls matching 7 release gates, all declared specs exist, both-directions drift reported as designed. Row 3 pins "exactly six" against a loose `tools/desk/*mutations*.json` glob that has grown to 16 (repo growth + the impl's honest 7th control). Per the verifier contract an unmet written expectation cannot be rounded to PASS → stays `implemented`; route to the desk to re-baseline row 3 (assert against the declared set of 7 / decouple from the glob), then re-verify. Not a change-failure (deliverable intact) — no CFR row, no bug; a verify-rebaseline.
+
 <!-- appended at implementation time: one row per Verify item —
      (command, exit code, output line(s) or hash, date, runner).
      "verified" status in the stream README requires this section filled
