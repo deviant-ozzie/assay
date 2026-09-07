@@ -958,6 +958,17 @@ func anyRiskPath(repo string, files map[string]bool) bool {
 	return deskkit.RiskPathTriggered(repo, paths)
 }
 
+// secReviewReason renders the risk-class reason for the SECURITY-REVIEW-REQUIRED row. A
+// risk-classed row always carries a reason (the union that fired sets one), but this defends
+// against an empty string so the row never reads "risk-classed ()"; the fallback is the
+// historical generic phrase.
+func secReviewReason(reason string) string {
+	if strings.TrimSpace(reason) == "" {
+		return "touches a security path"
+	}
+	return reason
+}
+
 // Action verbs. MERGE-NOW ranks above all — an approved-at-head CI-green PR
 // whose approval is perishable when main outruns the merge. SECURITY-REVIEW-REQUIRED
 // (#216) sits between BLOCKED and CI-RED: it blocks a would-be FLIP for a risk-classed
@@ -1111,9 +1122,13 @@ type classifyInput struct {
 	fail            int
 	ownFilesChanged bool
 	riskClassed     bool
-	securityPass    bool
-	ciGreen         bool
-	mergeConflict   bool
+	// riskReason names WHY the row is risk-classed (which union term fired), so the
+	// SECURITY-REVIEW-REQUIRED row says why rather than always blaming a security path —
+	// e.g. "trailer absent on App-authored PR" (#587).
+	riskReason    string
+	securityPass  bool
+	ciGreen       bool
+	mergeConflict bool
 	// mergeStateUnknown (#400 R3): the mergeStateStatus could not be read (UNKNOWN,
 	// absent, or a value this code does not recognise). Distinct from mergeConflict —
 	// that is a measured "no", this is "we did not measure". It blocks MERGE-NOW.
@@ -1255,7 +1270,7 @@ func classify(in classifyInput) (action, note string) {
 		// A risk-classed PR without a security-review pass at head must stay
 		// SEC-REVIEW-REQUIRED regardless of the CI-zero reason.
 		if in.riskClassed && !in.securityPass {
-			return actSecReview, "risk-classed (touches a security path) and no '" + securityPassMarker +
+			return actSecReview, "risk-classed (" + secReviewReason(in.riskReason) + ") and no '" + securityPassMarker +
 				"' from " + reviewerBotDisplay() + " at head — security review required before FLIP"
 		}
 		switch in.zeroCI {
@@ -1287,7 +1302,7 @@ func classify(in classifyInput) (action, note string) {
 			ciPhrase = "no PR CI configured for this repo and nothing ran (not a green verdict)"
 		}
 		if in.draft && in.riskClassed && !in.securityPass {
-			return actSecReview, "risk-classed (touches a security path) and no '" + securityPassMarker +
+			return actSecReview, "risk-classed (" + secReviewReason(in.riskReason) + ") and no '" + securityPassMarker +
 				"' from " + reviewerBotDisplay() + " at head — security review required before FLIP"
 		}
 		// #1652: on a CI-less repo with a probed no-checks zero the green is
@@ -2037,20 +2052,33 @@ func classifyPR(repo string, p prBase, ciRequired bool, briefScore map[string]in
 	briefRisk := deskkit.BriefRiskFromBody(repo, p.Body)
 
 	riskClassed := false
+	riskReason := ""
 	if rs.approved && rs.atHead && !rs.blocking && p.IsDraft && fail == 0 && pending == 0 {
 		files, complete, err := fetchChangedFiles(repo, p.Number)
 		if err != nil {
 			return prOutcome{}, err
 		}
-		// UNION (only widens): a diff we could not read in full — the trigger we did not
-		// see is exactly the one this gate exists to catch — OR a changed path in the
-		// trigger set OR the owning brief term. The brief term catches a code-level
-		// sensitive change declared in frontmatter (not in a touched path), AND a DECLARED
-		// brief (a `Brief:` trailer present) that could not be resolved/read — unverifiable,
-		// fail closed. A body with no trailer leaves the brief term silent.
-		riskClassed = !complete || anyRiskPath(repo, files) || briefRisk.RiskClassed
+		// UNION (only widens); the FIRST term that fires also names the reason the row shows.
+		// A diff we could not read in full — the trigger we did not see is exactly the one this
+		// gate exists to catch — OR a changed path in the trigger set OR the owning brief term
+		// (a frontmatter-declared sensitive change, or a DECLARED-but-unreadable brief, fail
+		// closed) OR the #587 trailer-absent-App anomaly: a role-App-authored PR with no
+		// Brief:/Issue: trailer is a change deskpr cannot produce, so it risk-classes and the
+		// board must say so rather than let the flip look clean. A body with no trailer leaves
+		// the brief term silent, which is exactly the gap the App term fills.
+		switch {
+		case !complete:
+			riskClassed, riskReason = true, "the diff could not be read in full — fail closed"
+		case anyRiskPath(repo, files):
+			riskClassed, riskReason = true, "touches a security path"
+		case briefRisk.RiskClassed:
+			riskClassed, riskReason = true, briefRisk.Reason
+		case deskkit.TrailerAbsentAppAnomaly(p.Author.Login, []byte(p.Body)):
+			riskClassed, riskReason = true, "trailer absent on App-authored PR"
+		}
 	}
 	in.riskClassed = riskClassed
+	in.riskReason = riskReason
 
 	action, note := classify(in)
 

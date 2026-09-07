@@ -659,6 +659,19 @@ func checkSecurityVerdict(o flipOpts, repo string, pr prInfo, files []fileInfo, 
 			reason = br.Reason
 		}
 	}
+	// #587: a role-App-authored PR carrying NO Brief:/Issue: trailer is an anomaly by
+	// construction — deskpr makes trailers MANDATORY for App-authored PRs, so such a PR is a
+	// change the desk cannot tie to a brief or an issue. BriefRiskFromBody above is silent on a
+	// trailer-less body, so this term catches exactly that case for App authors: it FAILS
+	// CLOSED, risk-classing the PR (Unverifiable) so the flip refuses until a Security-Review
+	// pass stands at head. It only widens (like the label and brief terms), and it sits BEFORE
+	// the file-list read so a short diff read cannot waive it. A trailer-less HUMAN-authored PR
+	// is NOT caught here — it keeps the path/visibility terms, so maintainer PRs bear no new
+	// cost. The author test is the roster's own App-slug resolution, never a hard-coded login.
+	if !riskClassed && deskkit.TrailerAbsentAppAnomaly(pr.AuthorLogin, []byte(pr.Body)) {
+		riskClassed = true
+		reason = "trailer absent on App-authored PR"
+	}
 	if !riskClassed {
 		// Reconcile the files walk against the forge's OWN count. A walk that stopped
 		// early otherwise believes it saw the whole diff — pad the PR with enough files
@@ -882,6 +895,11 @@ type prInfo struct {
 	// resolves the owning brief from it and consults the brief's own gate/risk frontmatter
 	// as an additive risk-classification term (checkSecurityVerdict).
 	Body string
+	// AuthorLogin is the change author's login. It feeds the trailer-absent-App risk term
+	// (#587): a role-App-authored PR carrying no Brief:/Issue: trailer is an anomaly deskpr
+	// cannot produce, so the security gate risk-classes it and refuses the flip until a
+	// Security-Review pass stands at head.
+	AuthorLogin string
 
 	change *deskkit.PullRequest
 }
@@ -1019,6 +1037,7 @@ func readPR(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo) (prInfo, error) 
 		ChangedFiles: ch.ChangedFiles,
 		Labels:       labels,
 		Body:         ch.Body,
+		AuthorLogin:  ch.Author.Login,
 		change:       ch,
 	}, nil
 }
