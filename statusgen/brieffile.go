@@ -67,6 +67,16 @@ type BriefFile struct {
 	// default: not an instrumentation brief), non-nil when present, including
 	// the empty string. Feeds the drain-before-instrument eligibility gate.
 	Measures *string
+	// SplitFrom is the optional brief-v1 `split-from:` field — the in-repo
+	// `<stream>/<NN>` id of the brief THIS brief was split off from. "" when
+	// absent, the default (a brief that is not a split child). Splitting is
+	// authoring, and a split must not silently DOWNGRADE risk: the split-flag
+	// conservation gate (splitflags.go) reads this so a child's gate/risk flags
+	// can be checked against the parent it names, even across streams or when the
+	// numeric-stem lineage (02a from 02) is not what encodes the parentage. A
+	// wrong TYPE is a parse error; the ref grammar and the conservation check live
+	// in splitflags.go, not here (same split satisfies:/design: use).
+	SplitFrom string
 	// Satisfies is the optional brief-v1 `satisfies:` list (registers-v1 §6.5):
 	// the requirements this brief was written against, as REQ-<slug> /
 	// <alias>:REQ-<slug> references. RESERVED, not gating — the refs are parsed
@@ -74,6 +84,14 @@ type BriefFile struct {
 	// flagged and no traceability is enforced from it. A wrong TYPE is a parse
 	// error; a present-but-malformed ref is a PROBLEM in checkBriefFiles.
 	Satisfies []string
+	// Design is the optional brief-v1 `design:` key (sdlc/05): a typed reference
+	// DR-<slug> to the design-decision record this brief was approved against, kept
+	// under docs/streams/decisions/. "" when absent. The design-approval gate
+	// (designgate.go) reads it: a risk-gated brief authored after the cutover may
+	// not sit at in-progress-or-later without a design record that dereferences. A
+	// wrong TYPE is a parse error; the ref grammar and the dereference are checked
+	// in designgate.go, not here (the same split satisfies:/Satisfies uses).
+	Design string
 	// Consumers is the optional brief-v1 `consumers:` list (brief-rule 9): the
 	// readers of a shared value this brief changes,
 	// each routed `<site>: fixed-here | follow-up <stream>/<NN> | out-of-scope
@@ -590,6 +608,18 @@ func parseBriefFile(path string) (*BriefFile, bool, error) {
 			addBad("homed-in must be a string")
 		}
 	}
+	// split-from is an OPTIONAL but KNOWN key (split-flag conservation): the
+	// `<stream>/<NN>` id of the brief this brief was split off from. Absence is
+	// the default (not a split child) and is never flagged. A wrong TYPE is a
+	// parse error; the ref grammar and the flag-conservation check are in
+	// splitflags.go, where the whole tree is in hand to resolve the parent.
+	if v, ok := data["split-from"]; ok {
+		if s, ok := v.(string); ok {
+			bf.SplitFrom = s
+		} else {
+			addBad("split-from must be a string")
+		}
+	}
 	// parallel-streams is an OPTIONAL but KNOWN key (methodology/43): the shards
 	// of an intra-brief split. Absence is the default and is never flagged —
 	// every brief on file today omits it and dispatches to one worker, which is
@@ -671,6 +701,19 @@ func parseBriefFile(path string) (*BriefFile, bool, error) {
 			bf.Satisfies = list
 		} else {
 			addBad("satisfies: %v", lerr)
+		}
+	}
+	// design is an OPTIONAL but KNOWN key (sdlc/05): the DR-<slug> design-decision
+	// record this brief was approved against. Absence is the neutral default and is
+	// NEVER flagged on its own — only the design-approval gate (designgate.go),
+	// scoped to risk-gated post-cutover briefs at in-progress-or-later, turns an
+	// absent record into a PROBLEM. A wrong TYPE is a parse error here; the ref
+	// grammar and the dereference are checked in designgate.go.
+	if v, ok := data["design"]; ok {
+		if s, ok := v.(string); ok {
+			bf.Design = s
+		} else {
+			addBad("design must be a string")
 		}
 	}
 	// decision-issue is an OPTIONAL but KNOWN key: the GitHub

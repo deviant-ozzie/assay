@@ -187,6 +187,13 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	briefProblems, briefNotices := checkBriefFiles(checkStreams, edgeStreams)
 	problems = append(problems, briefProblems...)
 	notices = append(notices, briefNotices...)
+	// Split-flag conservation: a child brief may not carry a weaker gate/risk flag
+	// than the brief it was split from (splitflags.go). checkStreams is the scoped
+	// child set; edgeStreams resolves the parent even when scoping dropped its
+	// stream — the same split checkBriefFiles uses for depends:/unblocks:.
+	splitProblems, splitNotices := splitFlagProblems(checkStreams, edgeStreams)
+	problems = append(problems, splitProblems...)
+	notices = append(notices, splitNotices...)
 	// §8 spec/scoping-doc lifecycle lint (spec-routing/01, spec/lifecycle-v1.md §8):
 	// an approved/routed document missing `**Routes-to:**` is a hard PROBLEM (§8.3);
 	// an unclassified `**Status:**` first token is a NOTICE (§8.1); an approved
@@ -294,7 +301,19 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// that has not adopted the field.
 	rootRepoName, repoProblems := rootRepo(streams)
 	problems = append(problems, repoProblems...)
-	problems = append(problems, registerIntegrityProblems(root)...)
+	// Register-integrity check, path-scoped by the CI-supplied --changed set the
+	// same way the DAR/product-scope checks already are. With NO --changed set (a
+	// full-tree / main-side regen) this is unchanged: every register defect is a
+	// hard PROBLEM. With a --changed set (the PR-side gate) a pre-existing defect
+	// on a register file the diff never touched demotes to a NOTICE — it is
+	// already red on main's own status-regen, which owns it — so one unrelated
+	// main-side register defect no longer hard-fails every open PR that touches
+	// docs/streams/**. A defect the PR's own diff introduces or touches (that file
+	// in the changed set) still fails: the gate keeps its teeth for the case it
+	// exists for.
+	regProblems, regNotices := registerIntegrityScoped(root, changed)
+	problems = append(problems, regProblems...)
+	notices = append(notices, regNotices...)
 	// REQUIREMENTS register (registers-v1 §6): per-entry shape validation —
 	// slug id, the ordered impact axis, the lifecycle, acceptance criteria,
 	// typed satisfied-by refs. The paired NOTICE states what is NOT checked:
@@ -314,6 +333,16 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	problems = append(problems, danglingSatisfiesProblems(root, streams)...)
 	notices = append(notices, orphanRequirementNotices(root, streams, time.Now())...)
 	notices = append(notices, untracedBriefNotices(streams)...)
+	// Design-approval gate (sdlc/05, spec/lifecycle-v1.md §4.4): a RISK-GATED brief
+	// authored after the cutover may not sit at in-progress-or-later without an
+	// approved design-decision record (DR-<slug> under docs/streams/decisions/).
+	// Scoped — gate: model all-risks-no briefs are untouched — and grandfathered by
+	// authoring date, so the pin bump reds nothing already in flight. The paired
+	// NOTICE carries the three-state could-not-check when the register is
+	// unreadable. Runs on the product-scoped subset for the gate and reads the
+	// register at root. Declared source: statusgen/designgate.go.
+	problems = append(problems, designGateProblems(root, checkStreams)...)
+	notices = append(notices, designGateNotices(root, checkStreams)...)
 	// The register field-gutting guard inside registerIntegrityProblems compares
 	// against the merge-base with origin/main. When that ref is unresolvable the
 	// base falls back to HEAD and already-committed gutting is compared against
@@ -363,6 +392,16 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	offBoardProblems = append(offBoardProblems, darProblems...)
 	notices = append(notices, darNotices...)
 	problems = append(problems, attributionProblems(checkStreams)...)
+	// Verified-cell / Evidence-runner AGREEMENT (F-verify-self-attest family): a
+	// NOTICE per `verified`/`done` brief whose Verified cell credits a runner other
+	// than the actor who ran a strict majority of its own Evidence rows — the drift
+	// a legitimate Verify-table RE-RUN leaves behind when the register cell keeps
+	// naming the original verifier while the re-run stamped the Evidence with the
+	// shepherd's identity. NOTICE for the same reason as evidenceActorNotices above
+	// (a pre-check backlog, and a residual cross-namespace false-positive); it
+	// changes no exit code and weakens no verification-integrity assertion. Offline,
+	// tree-only. Declared source: statusgen/verifiedrunneragree.go.
+	notices = append(notices, verifiedRunnerDisagreementNotices(checkStreams)...)
 	problems = append(problems, verifySectionProblems(checkStreams)...)
 	// Reverse-orphan (distribution/13 Task E-a): a README brief ROW whose brief
 	// FILE is absent is a phantom brief. checkBriefFiles guards the forward
