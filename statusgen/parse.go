@@ -24,6 +24,8 @@ type frontmatter struct {
 	Theme         string  `yaml:"theme"`          // optional render-style selector for cadenced artifacts; unmapped values render as a visible marker.
 	Owner         string  `yaml:"owner"`          // optional stream owner; "" when absent — renders "—".
 	Repo          string  `yaml:"repo"`           // optional owning repo, <owner>/<name>; "" when absent.
+	Board         string  `yaml:"board"`          // optional; "generated" opts the Briefs table into the marker-wrapped generated region (derived-board/04).
+	Traced        *bool   `yaml:"traced"`         // optional; true opts the stream INTO the untraced-brief traceability check (registers-v1 §6.5). nil/false = out (the default): the check never fires over a corpus that has not opted in.
 }
 
 // splitFrontmatter is the SINGLE canonical frontmatter splitter for the whole
@@ -91,8 +93,8 @@ func parseBriefTable(body string) ([]Brief, error) {
 				break
 			}
 			cells := splitRow(row)
-			if len(cells) < len(cols) {
-				return nil, fmt.Errorf("row has %d cells, header has %d: %q", len(cells), len(cols), row)
+			if len(cells) != len(cols) {
+				return nil, fmt.Errorf("row has %d cells, header has %d: %q — a briefs-table row must have exactly one cell per column. The usual cause of extra cells is a PR reference written into the Status cell (e.g. `implemented (#80)`) or a stray `||`, which prepends a cell and shifts every column right. The Status cell takes ONLY a bare lifecycle token (todo / in-progress / implemented / verified / done / blocked); the PR association belongs in the PR body or the `Brief:` trailer, never in the cell", len(cells), len(cols), row)
 			}
 			get := func(name string) string { return strings.TrimSpace(cells[idx[name]]) }
 			wave, err := strconv.Atoi(get("wave"))
@@ -152,6 +154,8 @@ func parseStreamREADME(path string) (*Stream, error) {
 		Theme:         strings.TrimSpace(fm.Theme),
 		Owner:         fm.Owner,
 		Repo:          strings.TrimSpace(fm.Repo),
+		Board:         strings.TrimSpace(fm.Board),
+		Traced:        fm.Traced != nil && *fm.Traced,
 		Briefs:        briefs,
 	}, nil
 }

@@ -63,7 +63,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 )
 
 // The configured control surfaces. These names are FIXED: external checks set
@@ -146,6 +145,23 @@ const (
 	// malformed entry REFUSES the whole configuration like any other roster error,
 	// so broken config never silently mis-groups.
 	EnvRepoAliases = "ASSAY_REPO_ALIASES"
+	// EnvRepoForges is the SOURCE of "which forge serves this repo?":
+	// comma-separated `owner/name=github` or `owner/name=gitlab` entries, consulted by
+	// ForgeFor (forgeresolve.go) BEFORE it falls back to mapping the origin remote's host.
+	// Unlike ASSAY_REPO_ALIASES (display-only), this key chooses which minted credential a
+	// write is performed as, so it is held to a STRICTER grammar than the aliases key:
+	//
+	//	FULL SLUG ONLY   a bare basename is refused. A display grouping override may
+	//	                 reasonably collapse two orgs' same-named repos onto one label;
+	//	                 collapsing them onto one CUSTODY IDENTITY is exactly the silent
+	//	                 widening a forge binding must never do.
+	//	FAIL-CLOSED      a malformed entry, an unrecognised forge value, or a repo bound
+	//	                 twice refuses the WHOLE roster — the same treatment every other
+	//	                 security-relevant roster key gets, never a silent skip.
+	//
+	// Unset is neither an error nor a refusal: ForgeFor's remote-host fallback (and,
+	// failing that, its Unverifiable refusal) is a complete answer on its own.
+	EnvRepoForges = "ASSAY_REPO_FORGES"
 	// EnvReleaseRepo names the repo deskrelease cuts release tags in, as a single
 	// `owner/name` slug. Unset means the shipped default — the project's own public
 	// home — so an adopter who has not configured anything gets byte-identical
@@ -200,7 +216,9 @@ const (
 	// shared roster.env — a natural mistake, since that is where every other
 	// ASSAY_ knob lives — would otherwise take every desk tool's trust roster
 	// down at once. Recognised and ignored is the fail-safe reading. Same
-	// treatment as EnvSweepWithheldStreams and EnvWithheldIdentifiers below.
+	// treatment as EnvSweepWithheldStreams below. (EnvWithheldIdentifiers used to
+	// belong to this list and no longer does: since #490 it is parsed and APPLIED,
+	// which is what recognised-and-ignored keys are one bug report away from being.)
 	EnvAllowCluster = "ASSAY_ALLOW_CLUSTER"
 
 	// EnvHomeRepo and EnvScanRepos are STATUSGEN-only roster values (the home repo
@@ -257,6 +275,69 @@ const (
 	// statusgen/rosterconfig.go's scanEnvDeterministicGatePatterns.
 	EnvDeterministicGatePatterns = "ASSAY_DETERMINISTIC_GATE_PATTERNS"
 )
+
+// knownRosterKeys is the ASSAY_-namespace roster SCHEMA these tools speak: every
+// key parseConfig recognises. It is a function rather than a literal inside
+// parseConfig so a test can read the set without re-deriving it, and so the set
+// can be bound to statusgen's twin (scanKnownRosterKeys) over the shared vector
+// file statusgen/testdata/roster_coupling.json.
+//
+// WHY THE BINDING EXISTS. Both binaries read the SAME ~/.config/assay/roster.env,
+// and both REFUSE the whole configuration on an ASSAY_ key they do not recognise
+// (see the comment in parseConfig). So a key one binary knows and the other does
+// not makes a roster that is valid and REQUIRED for one tool a total refusal for
+// the other, with no roster edit able to satisfy both. That is not hypothetical:
+// ASSAY_REPO_FORGES is the only way the desk verbs resolve a repo to a forge, and
+// while statusgen did not recognise it, a roster carrying it took the whole
+// --scan-issues intake lane down.
+//
+// RECOGNITION IS NOT CONSUMPTION. Listing a key here settles one thing only: it
+// does not refuse. What reads it is a separate question with three answers —
+// parseConfig below, some other site through a direct os.Getenv, or the OTHER
+// binary and not this one at all. Each entry's own comment says which. Adding a
+// key here does NOT make deskkit consume it.
+//
+// Keys OUTSIDE the ASSAY_ namespace are not listed and never refuse: they are
+// legitimate co-tenants in the same file and are echoed as UnknownKeys.
+func knownRosterKeys() []string {
+	return []string{
+		EnvBlessLogin, EnvTrustedLogins, EnvTrustedBotSlugs,
+		EnvAllowedRepos, EnvHumanLoginMap, EnvRiskPathTriggersExtra,
+		EnvRiskCallout, EnvRepoAliases, EnvRepoForges, EnvReleaseRepo,
+		EnvWriteguardCallout, EnvRosterSchema,
+		// STATUSGEN-only keys: recognised so a shared roster.env that configures
+		// statusgen does not collapse deskkit's configuration; not consumed here.
+		EnvHomeRepo, EnvScanRepos, EnvAuthorizedAuthors,
+		EnvFormerHumanLoginMap,
+		EnvChannelDriftTarget, EnvDeterministicGatePatterns,
+		// EnvSweepWithheldStreams (ASSAY_SWEEP_WITHHELD_STREAMS, sweepconfig.go) is
+		// consumed by the S2 sweep via a direct os.Getenv read, NOT through this
+		// scanConfig — but the de-housing REQUIRES the house to set it in the
+		// shared roster.env for the sweep to route, so it must be RECOGNISED here or
+		// activating that de-housing collapses the whole roster on the
+		// unknown-ASSAY_-key refusal. Bound to statusgen's
+		// scanEnvSweepWithheldStreams by the shared key list.
+		EnvSweepWithheldStreams,
+		// EnvWithheldIdentifiers (ASSAY_WITHHELD_IDENTIFIERS, selfcontain.go) is CONSUMED
+		// here, not merely recognised: parseConfig lands it on cfg.WithheldIdentifiers and
+		// the public-repo self-containment scan reads it through WithheldIdentifiers(),
+		// environment first and this roster value second. Recognised-and-ignored is what
+		// it used to be, and #490 is the bug that shape produced — a roster carrying the
+		// key loaded clean and the scan's register category still never ran.
+		//
+		// statusgen consumes it in NEITHER form and recognises it only, which is why it
+		// still belongs in the shared key list: consumption is per-binary, recognition is
+		// not.
+		EnvWithheldIdentifiers,
+		// EnvAllowCluster (ASSAY_ALLOW_CLUSTER) is the clusterguard operator opt-in, read
+		// by cmd/clusterguard via a direct os.Getenv and never consumed here. It is
+		// RECOGNISED so that an operator who records it in the shared roster.env does not
+		// collapse every desk tool's roster on the unknown-ASSAY_-key refusal. Recognised
+		// is not applied: putting it in roster.env still does NOT grant the opt-in, which
+		// is a per-shell export by design.
+		EnvAllowCluster,
+	}
+}
 
 // rosterSchemaVersion is the format version this build speaks.
 const rosterSchemaVersion = "1"
@@ -326,9 +407,18 @@ type Config struct {
 	Bless Identity
 	// Humans maps a lowercased human login to its pinned id (0 = unpinned).
 	Humans map[string]int64
-	// Bots maps a lowercased App slug to its BOT USER id (0 = unpinned).
+	// Bots maps a lowercased GitHub App slug to its BOT USER id (0 = unpinned). It
+	// carries GITHUB entries only — the github-slug-keyed shape trust.go's GitHub
+	// paths read. A GitLab identity lives in BotIdents (and its username in Logins),
+	// never here, so a github-slug lookup never resolves a GitLab account by accident.
 	Bots map[string]int64
-	// RoleBots maps a desk role ("reviewer") to its App slug.
+	// BotIdents maps a lowercased slug-or-login to its full forge-qualified identity
+	// (forge, inferred flag, id). It is the source of truth for every forge-aware
+	// consumer — the commit-identity check, the role commit identity, the
+	// forge-agreement gate — while Bots/Logins remain the flat views the pre-existing
+	// GitHub trust paths read. See forgeidentity.go.
+	BotIdents map[string]BotIdentity
+	// RoleBots maps a desk role ("reviewer") to its App slug-or-login.
 	RoleBots map[string]string
 	// Logins is the set of ACCEPTED rendered login forms, lowercased: each human
 	// login verbatim, and each App slug in BOTH GitHub renderings. The BARE slug
@@ -352,6 +442,13 @@ type Config struct {
 	// empty facet keeps the default. Display-only — no trust decision reads it.
 	RepoAliases map[string]RepoAlias
 
+	// RepoForges is the configured forge binding parsed from ASSAY_REPO_FORGES, keyed by
+	// the LOWERCASED full `owner/name` slug (a bare basename is refused at parse time, so
+	// no basename key ever lands here). The value is "github" or "gitlab". ForgeFor
+	// (forgeresolve.go) consults this FIRST, before its remote-host fallback. Empty when
+	// unset — that is a complete configuration, not a degraded one.
+	RepoForges map[string]string
+
 	// ReleaseRepo is the configured release home (EnvReleaseRepo), empty when
 	// unset — the consumer applies its own shipped default, so "unset" and
 	// "configured to the default" are the same behaviour rather than two states
@@ -362,6 +459,19 @@ type Config struct {
 	// (EnvWriteguardCallout), empty when unset. Empty means the compiled generic
 	// indicators alone — see the const's ONLY-WIDENS note.
 	WriteguardCallout string
+
+	// WithheldIdentifiers is the normalised withheld register set parsed from
+	// ASSAY_WITHHELD_IDENTIFIERS — the stream slugs and brief ids the public-repo
+	// self-containment scan (selfcontain.go) refuses in an outward body. Nil when
+	// unset, which is a COMPLETE adopter configuration and not a degraded one: the
+	// scan's register category degrades to a NOTICE and every other category runs.
+	//
+	// Read through deskkit.WithheldIdentifiers(), never off this field directly —
+	// that accessor is where the environment override lives. Landing it here at all
+	// is #490's fix: the key was recognised by the parser but only ever read from
+	// the environment, so a roster-configured value loaded clean and was then never
+	// applied.
+	WithheldIdentifiers []string
 
 	// RepoPatterns is the sorted, de-duplicated set of owner/* PATTERN entries parsed
 	// out of ASSAY_ALLOWED_REPOS (extended to configuration: an entry
@@ -516,7 +626,7 @@ func readRawConfig(class ToolClass) (map[string]string, string, []string) {
 	keys := []string{
 		EnvBlessLogin, EnvTrustedLogins, EnvTrustedBotSlugs,
 		EnvAllowedRepos, EnvHumanLoginMap, EnvRiskPathTriggersExtra,
-		EnvRiskCallout, EnvRepoAliases, EnvReleaseRepo, EnvWriteguardCallout, EnvRosterSchema,
+		EnvRiskCallout, EnvRepoAliases, EnvRepoForges, EnvReleaseRepo, EnvWriteguardCallout, EnvRosterSchema,
 	}
 	fromEnv := func() map[string]string {
 		m := map[string]string{}
@@ -621,17 +731,10 @@ func checkOwnerPerms(path string, isDir bool) error {
 			"anything that can write it can name the accounts this tool trusts. "+
 			"Fix with `chmod %s %s`", kind, path, mode, map[bool]string{true: "0700", false: "0600"}[isDir], path)
 	}
-	st, ok := fi.Sys().(*syscall.Stat_t)
-	if !ok {
-		return fmt.Errorf("cannot determine the owner of %s — refusing to read a roster "+
-			"whose ownership cannot be established", path)
-	}
-	if uid := os.Getuid(); int(st.Uid) != uid {
-		return fmt.Errorf("roster config %s is owned by uid %d, not by the invoking user (uid %d) — "+
-			"refusing to take the trusted-identity list from a file this user does not own",
-			path, st.Uid, uid)
-	}
-	return nil
+	// Owner check is platform-specific: unix compares the owning uid; windows has
+	// no uid and skips it LOUDLY (see rosterowner_{unix,windows}.go). The
+	// group/world-writable mode check above runs on both platforms.
+	return checkFileOwner(path, fi)
 }
 
 // parseDotenv reads KEY=VALUE lines. A leading "export " is tolerated, "#"
@@ -711,6 +814,7 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 		Source:      source,
 		Humans:      map[string]int64{},
 		Bots:        map[string]int64{},
+		BotIdents:   map[string]BotIdentity{},
 		RoleBots:    map[string]string{},
 		Logins:      map[string]bool{},
 		Repos:       map[string]repoPolicy{},
@@ -738,38 +842,16 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 	// Namespace membership is the discriminator, not a near-miss distance metric: a
 	// typo inside the owned namespace is rejected, and a key outside it is out of
 	// scope entirely.
-	known := map[string]bool{
-		EnvBlessLogin: true, EnvTrustedLogins: true, EnvTrustedBotSlugs: true,
-		EnvAllowedRepos: true, EnvHumanLoginMap: true, EnvRiskPathTriggersExtra: true,
-		EnvRiskCallout: true, EnvRepoAliases: true, EnvReleaseRepo: true, EnvWriteguardCallout: true,
-		EnvRosterSchema: true,
-		// STATUSGEN-only keys: recognised so a shared roster.env that configures
-		// statusgen does not collapse deskkit's configuration; not consumed here.
-		EnvHomeRepo: true, EnvScanRepos: true, EnvAuthorizedAuthors: true,
-		EnvFormerHumanLoginMap: true,
-		EnvChannelDriftTarget:  true, EnvDeterministicGatePatterns: true,
-		// EnvSweepWithheldStreams (ASSAY_SWEEP_WITHHELD_STREAMS, sweepconfig.go) is
-		// consumed by the S2 sweep via a direct os.Getenv read, NOT through this
-		// scanConfig — but #1333's de-housing REQUIRES the house to set it in the
-		// shared roster.env for the sweep to route, so it must be RECOGNISED here or
-		// activating that de-housing collapses the whole roster on the
-		// unknown-ASSAY_-key refusal. KEEP IN SYNC with statusgen's
-		// scanEnvSweepWithheldStreams.
-		EnvSweepWithheldStreams: true,
-		// EnvWithheldIdentifiers (ASSAY_WITHHELD_IDENTIFIERS, selfcontain.go) is read by
-		// the public-repo self-containment scan through a direct os.Getenv, NOT through
-		// this scanConfig — but a house that configures it does so in the SAME shared
-		// roster.env, and an unrecognised key in the ASSAY_ namespace refuses the whole
-		// configuration. It must therefore be RECOGNISED here or turning the scan's
-		// register category on would collapse every desk tool's roster at once.
-		EnvWithheldIdentifiers: true,
-		// EnvAllowCluster (ASSAY_ALLOW_CLUSTER) is the clusterguard operator opt-in, read
-		// by cmd/clusterguard via a direct os.Getenv and never consumed here. It is
-		// RECOGNISED so that an operator who records it in the shared roster.env does not
-		// collapse every desk tool's roster on the unknown-ASSAY_-key refusal. Recognised
-		// is not applied: putting it in roster.env still does NOT grant the opt-in, which
-		// is a per-shell export by design.
-		EnvAllowCluster: true,
+	//
+	// The SET itself lives in knownRosterKeys() — it is the half that must stay
+	// identical to statusgen's, and it is bound to it by the shared key list in
+	// statusgen/testdata/roster_coupling.json. Recognition and consumption are
+	// separate questions: a key listed there may be consumed below, consumed
+	// elsewhere through a direct os.Getenv, or consumed by the other binary
+	// entirely. Recognising it here only settles that it does not refuse.
+	known := map[string]bool{}
+	for _, k := range knownRosterKeys() {
+		known[k] = true
 	}
 	for k := range vals {
 		if known[k] {
@@ -779,9 +861,9 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 			bad("%s: unknown key in the ASSAY_ namespace. It is not applied, so whatever it was "+
 				"meant to configure is EMPTY — and an empty control surface that reports itself "+
 				"configured is the failure this refusal exists to prevent. Recognised keys: "+
-				"%s, %s, %s, %s, %s, %s, %s, %s, %s, %s (and the optional %s)",
+				"%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s (and the optional %s)",
 				k, EnvBlessLogin, EnvTrustedLogins, EnvTrustedBotSlugs, EnvAllowedRepos,
-				EnvHumanLoginMap, EnvRiskPathTriggersExtra, EnvRiskCallout, EnvRepoAliases,
+				EnvHumanLoginMap, EnvRiskPathTriggersExtra, EnvRiskCallout, EnvRepoAliases, EnvRepoForges,
 				EnvReleaseRepo, EnvWriteguardCallout, EnvRosterSchema)
 			continue
 		}
@@ -807,20 +889,26 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 			role = strings.ToLower(strings.TrimSpace(r))
 			entry = rest
 		}
-		slug, id, ok := splitIdentity(entry)
+		ident, ok := splitBotEntry(entry)
 		if !ok {
-			bad("%s: cannot parse entry %q — expected [role=]slug[:id] with a positive numeric id",
-				EnvTrustedBotSlugs, entry)
+			bad("%s: cannot parse entry %q — expected [role=]<forge>:slug-or-login[:id] "+
+				"(forge is github or gitlab; an entry with no forge is read as github). The id, "+
+				"when present, must be a positive number", EnvTrustedBotSlugs, entry)
 			continue
 		}
-		cfg.Bots[slug] = id
-		// BOTH GitHub renderings are accepted; the bare slug never is.
-		//   REST API user.login:        "<slug>[bot]"
-		//   gh CLI --json author login: "app/<slug>"
-		cfg.Logins[slug+"[bot]"] = true
-		cfg.Logins["app/"+slug] = true
+		cfg.BotIdents[ident.Slug] = ident
+		// Per-forge renderings (forgeidentity.go): GitHub keeps <slug>[bot] and
+		// app/<slug>; GitLab registers the account's username. The bare GitHub App slug
+		// is never accepted on any forge. The bot USER id is kept in the flat Bots view
+		// for GITHUB entries only, the shape trust.go's GitHub paths read.
+		for _, login := range ident.AcceptedLogins() {
+			cfg.Logins[login] = true
+		}
+		if ident.Forge == ForgeGitHub {
+			cfg.Bots[ident.Slug] = ident.ID
+		}
 		if role != "" {
-			cfg.RoleBots[role] = slug
+			cfg.RoleBots[role] = ident.Slug
 		}
 	}
 
@@ -1050,6 +1138,40 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 		cfg.RepoAliases[key] = RepoAlias{Short: short, Product: prod}
 	}
 
+	// --- repo forge binding (ASSAY_REPO_FORGES) — the SOURCE ForgeFor (forgeresolve.go)
+	// reads before its remote-host fallback. Unlike the aliases above (display-only), a
+	// malformed OR ambiguous entry here refuses the WHOLE configuration: this key decides
+	// which minted credential a write is performed as, so "configured but wrong" must fail
+	// exactly as loudly as every other identity-adjacent roster value.
+	cfg.RepoForges = map[string]string{}
+	for _, entry := range splitList(vals[EnvRepoForges]) {
+		key, val, hasEq := strings.Cut(entry, "=")
+		key = strings.ToLower(strings.TrimSpace(key))
+		val = strings.ToLower(strings.TrimSpace(val))
+		if !hasEq || key == "" || val == "" {
+			bad("%s: cannot parse entry %q — expected owner/name=github or owner/name=gitlab",
+				EnvRepoForges, entry)
+			continue
+		}
+		if strings.Count(key, "/") != 1 || strings.HasPrefix(key, "/") || strings.HasSuffix(key, "/") {
+			bad("%s: entry %q's repo %q is not a full owner/name slug — unlike %s, a bare basename is "+
+				"NOT accepted here: this key chooses a WRITE identity, and collapsing two orgs' "+
+				"same-named repos onto one forge is exactly the silent widening it must refuse",
+				EnvRepoForges, entry, key, EnvRepoAliases)
+			continue
+		}
+		if val != string(ForgeGitHub) && val != string(ForgeGitLab) {
+			bad("%s: entry %q names forge %q, which is neither %q nor %q",
+				EnvRepoForges, entry, val, ForgeGitHub, ForgeGitLab)
+			continue
+		}
+		if _, dup := cfg.RepoForges[key]; dup {
+			bad("%s: repo %q is bound to a forge more than once", EnvRepoForges, entry)
+			continue
+		}
+		cfg.RepoForges[key] = val
+	}
+
 	// --- release home (ASSAY_RELEASE_REPO) ---
 	// A SINGLE slug, never a list: a release tool that took the first entry of a
 	// list would pick its target by parse order. Unset is neither an error nor a
@@ -1093,6 +1215,15 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 			cfg.WriteguardCallout = raw
 		}
 	}
+
+	// --- withheld register identifiers (selfcontain.go) ---
+	//
+	// A plain list value with nothing to validate: an identifier is whatever this
+	// deployment's register calls a stream, so there is no shape to refuse and an
+	// empty result is the legitimate unset state. It is normalised HERE, at load,
+	// through the same splitter the environment arm uses, so the two sources cannot
+	// disagree about case or spacing.
+	cfg.WithheldIdentifiers = splitWithheldIdentifiers(vals[EnvWithheldIdentifiers])
 
 	if len(problems) > 0 {
 		return Config{Class: class, Source: source, Problems: problems}
@@ -1159,6 +1290,14 @@ func (c Config) EffectiveConfigLines() []string {
 		aliases = append(aliases, repo+"="+a.Short+":"+a.Product)
 	}
 	sort.Strings(aliases)
+	// REPO FORGES render one `repo=forge` token per configured binding, sorted — the
+	// forge-selection identity decision, so (like the role bindings below) it must be the
+	// most visible thing here, never inferred from a diff.
+	forges := make([]string, 0, len(c.RepoForges))
+	for repo, kind := range c.RepoForges {
+		forges = append(forges, repo+"="+kind)
+	}
+	sort.Strings(forges)
 	// The release home and the writeguard callout both render their UNSET state as a
 	// named default rather than as a blank. A blank reads as "nobody filled this in";
 	// what these two actually mean when unset is a complete, shipped behaviour, and
@@ -1220,7 +1359,7 @@ func (c Config) EffectiveConfigLines() []string {
 		fmt.Sprintf("assay-config: class=%s source=%s configured=%t", c.Class, c.Source, c.Configured()),
 		fmt.Sprintf("assay-config: %s=%s", EnvBlessLogin, blessStr),
 		fmt.Sprintf("assay-config: %s=%s", EnvTrustedLogins, sortedIdents(c.Humans)),
-		fmt.Sprintf("assay-config: %s=%s", EnvTrustedBotSlugs, sortedIdents(c.Bots)),
+		fmt.Sprintf("assay-config: %s=%s", EnvTrustedBotSlugs, c.sortedBotIdents()),
 		fmt.Sprintf("assay-config: role-bindings=%s", rolesStr),
 		fmt.Sprintf("assay-config: %s=%s", EnvAllowedRepos, reposStr),
 		fmt.Sprintf("assay-config: %s=%s", EnvScanRepos, strings.Join(c.ScanRepos, ",")),
@@ -1228,6 +1367,7 @@ func (c Config) EffectiveConfigLines() []string {
 		fmt.Sprintf("assay-config: %s=%s", EnvRiskPathTriggersExtra, strings.Join(c.RiskExtra, ",")),
 		fmt.Sprintf("assay-config: %s=%s", EnvRiskCallout, riskCalloutStr),
 		fmt.Sprintf("assay-config: %s=%s", EnvRepoAliases, strings.Join(aliases, ",")),
+		fmt.Sprintf("assay-config: %s=%s", EnvRepoForges, strings.Join(forges, ",")),
 		fmt.Sprintf("assay-config: %s=%s", EnvReleaseRepo, releaseStr),
 		fmt.Sprintf("assay-config: %s=%s", EnvWriteguardCallout, calloutStr),
 	}

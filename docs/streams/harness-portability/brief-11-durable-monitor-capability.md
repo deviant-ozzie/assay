@@ -216,9 +216,61 @@ present). Every absence-assertion below pairs a positive control (stream README 
      Row 6's plant/restore output pasted, not summarised.
      "verified" requires a non-implementer per the stream README and this brief's gate. -->
 
+**Tooling note.** `harnesslint` and `statusgen` are the stream's source-tree tools; per the
+re-home note above, they are not vendored into this public repo, so rows 2/2a-adjacent, 3, and
+6 were run with a `harnesslint` binary built from that source tree (its embedded banned-tokens
+config already carries the harness-portability/11 additions — `` `Monitor` ``, `` `TaskList` ``,
+`` `EnterWorktree` ``, `persistent: true`), and row 8 with `statusgen` from its module directory.
+All commands ran offline (`KUBECONFIG=/dev/null`).
+
+**Prior-work note.** The vocabulary amendment (Task 1), both binding-file rows (Task 2), the
+EnterWorktree removal (Task 4), and the token-lint hardening (Task 5) already landed ahead of this
+implementation in the neutral-form re-stage of the desk bodies; this PR completes Task 3 (the four
+desk bodies still carried the durable-watch concept in plain prose, not the capability vocabulary)
+and the residual capital-`Monitor` audit site, and flips the board row.
+
 | # | Command | Exit | Output | Date | Runner |
 |---|---------|------|--------|------|--------|
-| | | | | | |
+| 1 | `sed -n '/assay:capability-vocabulary/,/-->/p' README.md \| grep -qx 'durable-monitor'` | `0` | name present in the machine-readable closed set | 2026-09-04 | HP/11 implementer |
+| 2 | `harnesslint bindings plugins/assay/references` | `1` | **Pre-existing, OUT OF SCOPE:** 9 violations, all `no degradation cell for skill "ask-decision" / "install" / "upgrade-assay"` across all three reference files — bundle skills added after the binding files, unrelated to `durable-monitor`. Zero violations name a capability row; the `durable-monitor` closure is satisfied (see 2a). Not fixable within this brief's scope; surfaced for follow-up. | 2026-09-04 | HP/11 implementer |
+| 2a | `grep -lc 'capability:durable-monitor' plugins/assay/references/{claude-code,codex}.md \| wc -l` | — | `2` — the row is present in BOTH binding files (positive control) | 2026-09-04 | HP/11 implementer |
+| 3 | `harnesslint bodies plugins/assay/skills` | `1` | **Pre-existing, OUT OF SCOPE:** 3 violations, all `CLAUDE_PLUGIN_ROOT` in `plugins/assay/skills/ask-decision/SKILL.md` (lines 48, 52, 149) — a non-desk skill outside this brief's five-body scope. ZERO violations in any of the five desk bodies this brief touches; my edits add no banned token. | 2026-09-04 | HP/11 implementer |
+| 4 | `grep -rn -e 'Monitor' -e 'persistent: true' -e 'TaskList' plugins/assay/skills/*/SKILL.md` | `1` | no capital-`Monitor` / `persistent: true` / `TaskList` harness token remains in any body | 2026-09-04 | HP/11 implementer |
+| 4a | `grep -rc 'capability:durable-monitor' {pr-review-desk,intake-desk,the-desk,verify-desk}/SKILL.md \| awk` | — | `10` (>= 8) — sites REWRITTEN to the capability, not deleted (positive control) | 2026-09-04 | HP/11 implementer |
+| 5 | `grep -rn 'EnterWorktree' plugins/assay/skills/*/SKILL.md` | `1` | no EnterWorktree token remains | 2026-09-04 | HP/11 implementer |
+| 5a | `grep -rc 'capability:isolate-workspace' {verify-desk,worker-desk}/SKILL.md \| awk '{print (s>=2)}'` | — | `1` — both former EnterWorktree sites carry `capability:isolate-workspace` (positive control) | 2026-09-04 | HP/11 implementer |
+| 6 | plant `persistent: true` into `plugins/assay/skills/the-desk/SKILL.md`; `harnesslint bodies`; restore | `1` | plant caught: `plugins/assay/skills/the-desk/SKILL.md:306: banned harness token "persistent: true" — … name the` `` `durable-monitor` `` `capability …`. After restore, `grep -c 'persistent: true' plugins/assay/skills/the-desk/SKILL.md` = `0` and row 3's desk bodies return to zero-violation. (Hardening from Task 5 was taken — in the source tree — so this row runs.) | 2026-09-04 | HP/11 implementer |
+| 7 | `grep -c 'never degrade' plugins/assay/references/codex.md` | — | `3` (>= 1) — the isolation/evidence/gates never-degrade floor is intact; `durable-monitor` sits below it as a convenience | 2026-09-04 | HP/11 implementer |
+| 8 | `statusgen --root . --lint` | `0` | `LINT: PASS`. Notices are pre-existing and on other streams (ordering-gate prose, closed-brief witnesses); harness-portability is not among them. | 2026-09-04 | HP/11 implementer |
+
+**Rows 2 and 3 are checked-failed for reasons OUTSIDE this brief's scope** (three bundle skills —
+`ask-decision`, `install`, `upgrade-assay` — lack binding rows / carry `CLAUDE_PLUGIN_ROOT`), not by
+any change here; they are reported as-observed, never rounded to green. This brief's own contribution
+(rows 1, 2a, 4, 4a, 5, 5a, 6, 7, 8, and the `durable-monitor` closure inside the bindings check) is
+all green. The out-of-scope binding/coverage gap is flagged on the PR for a follow-up.
+
+### Non-implementer verifier run — VERIFY: PASS — 2026-09-05 opus-4.8[1m]-verifier (verify-desk dispatch), medici-finance/assay merged main 55bb04c
+
+Runner != implementer. Offline envelope (KUBECONFIG=/dev/null). gate: model; risk {regulatory:no, customer:no, irreversible:no, sensitive-data:no}. harnesslint built offline from the house tool source (its embedded banned-tokens carries the HP/11 additions).
+
+| # | command | expected | observed (exit + key line) | date · runner |
+|---|---------|----------|----------------------------|---------------|
+| 1 | sed the capability-vocabulary block in README.md, grep durable-monitor | 0 | exit 0 — durable-monitor present in the machine-readable closed set | 2026-09-05 · opus-4.8[1m]-verifier |
+| 2 | harnesslint bindings plugins/assay/references | 0 | exit 1 — 12 violations, ALL out-of-scope (no degradation cell for skill ask-decision/install/pdfingest/upgrade-assay across 3 reference files); ZERO name durable-monitor; closure satisfied (see 2a). Bundle skills added after the binding files, not this diff | 2026-09-05 · opus-4.8[1m]-verifier |
+| 2a | grep -lc capability:durable-monitor in claude-code.md + codex.md | 2 | 2 — durable-monitor row present in BOTH binding files (positive control) | 2026-09-05 · opus-4.8[1m]-verifier |
+| 3 | harnesslint bodies plugins/assay/skills | 0 | exit 1 — 3 violations, ALL out-of-scope (CLAUDE_PLUGIN_ROOT in ask-decision/SKILL.md); ZERO in the five desk bodies this brief touches | 2026-09-05 · opus-4.8[1m]-verifier |
+| 4 | grep Monitor / persistent:true / TaskList in skills SKILL.md | exit 1 | exit 1 — no capital-Monitor/persistent:true/TaskList harness token in any body | 2026-09-05 · opus-4.8[1m]-verifier |
+| 4a | sum capability:durable-monitor across the desk bodies | >= 8 | 10 — sites rewritten to the capability, not deleted (positive control) | 2026-09-05 · opus-4.8[1m]-verifier |
+| 5 | grep EnterWorktree in skills SKILL.md | exit 1 | exit 1 — no EnterWorktree token remains | 2026-09-05 · opus-4.8[1m]-verifier |
+| 5a | count capability:isolate-workspace in verify/worker-desk | 1 (both sites) | 1 — both former EnterWorktree sites carry capability:isolate-workspace (positive control) | 2026-09-05 · opus-4.8[1m]-verifier |
+| 6 | plant persistent:true into the-desk body, harnesslint bodies, restore | exit 1, names the-desk | exit 1 — the-desk/SKILL.md banned harness token "persistent: true" flagged; after restore count 0, worktree clean, desk bodies return to zero HP violations. Recurrence guard works | 2026-09-05 · opus-4.8[1m]-verifier |
+| 7 | grep -c "never degrade" codex.md | >= 1 | 4 — never-degrade floor intact; durable-monitor sits below as a convenience | 2026-09-05 · opus-4.8[1m]-verifier |
+| 8 | statusgen --root . --lint | 0 | exit 0 — LINT: PASS; harness-portability carries only NOTICE-level items, zero PROBLEM | 2026-09-05 · opus-4.8[1m]-verifier |
+
+**VERIFY: PASS.** The brief's own deliverable is fully green (rows 1, 2a, 4, 4a, 5, 5a, 6, 7, 8) and the durable-monitor closure inside the bindings check is satisfied (2a=2). Rows 2 and 3 are checked-failed exit-1 SOLELY from out-of-scope pre-existing harness-neutrality debt (bundle skills ask-decision/install/pdfingest/upgrade-assay lacking degradation cells; CLAUDE_PLUGIN_ROOT in ask-decision) — none introduced by this diff, none naming durable-monitor or the five desk bodies; reported as-observed, not rounded. Corroborated by the prior recorded outcome (harness-portability/11 verified 7/7 in the verify-outcomes ledger). Follow-up (out-of-scope, not a brief-11 defect): the reference-file binding closure + ask-decision body carry pre-existing harness-neutrality debt that keeps rows 2/3 exit-1 until a separate brief adds those degradation cells.
+
+RISK-VALUE: DERIVED — Codex durable-monitor classification = degrades @ plugins/assay/references/codex.md — the stream floor (isolation/evidence/review-gates) fixes the only three never-degrade guarantees; a durable wake-signal is a convenience below that floor, so on Codex (process-local child agents, silently-killed background → no durable cross-turn wake) the capability correctly degrades to event-driven + fixed-cadence sweep rather than refusing. Row 7 confirms the never-degrade floor text survives (count 4). Git-reversible method text.
+RISK-VALUE: N/A (numeric) — the only other literal is the capability identifier durable-monitor (a naming ratification flagged for reviewer sign-off, closure-checked by harnesslint bindings row 2a=2); no numeric constant/threshold/authority-numeric, no transfer/spend/publish; gate:model, irreversible:no.
 
 ## Review
 

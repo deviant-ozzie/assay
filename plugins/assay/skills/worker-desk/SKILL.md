@@ -17,12 +17,21 @@ table.
 re-derive them per dispatch): every session works in its own worktree, never a shared checkout; merge,
 never rebase; the generated board is single-writer = main's CI; every post is made as the role's own
 App identity; act only on trusted-authored items; file at discovery rather than narrating; one item =
-one branch = one PR, and a merged or closed PR is DONE; a notable change records one human-legible
-highlight as a per-PR fragment file under `changelog/` (`changelog/<slug>.md`) rather than editing a
-shared section (a genuinely non-notable PR carries the `changelog:skip` label instead).
+one branch = one PR, and a merged or closed PR is DONE; and — in a repo that enforces it (one whose
+`changelog/` directory carries `changelog/README.md`) — a notable change records one human-legible
+highlight as a per-PR fragment file (`changelog/<slug>.md`) rather than editing a shared section, while
+a genuinely non-notable PR carries the `changelog:skip` label, applied by the desk or a human and never
+self-applied by the worker. The split is decided by the DIFF, not by taste: a notable CODE PR ships the
+fragment, while a documentation-only or Evidence-only PR owes none — and on a repo whose changelog check
+does not already classify documentation and Evidence PRs on its own, the waiver is ASKED FOR from the
+maintainer rather than applied by any automation. This paragraph
+binds the DESK's own writes; the worker is bound to the same fragment rule through the changelog clause
+`deskdispatch` emits verbatim in the worker kit.
 
 > Bindings for your harness — which mechanism each `capability:*` names — are in
 > `../../references/<harness>.md`.
+
+> Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, and role/repo coverage — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
 
 ## Boot
 
@@ -56,6 +65,14 @@ slots, and a sweep proving nothing eligible exists (§HARD GATE).
     as items land. A dispatched worker mid-item keeps its slot.
   - A width that cannot be read is **could-not-check**: hold at the number you last read (or the
     default) and file it. Ignorance never widens a pool.
+- **The reservation is the code-enforced form of the next two rules** (desk-supervision/05):
+  `deskroster width --role worker-desk --reserve resume=N,rework=M` floors N/M slots for orphan
+  resumes and `Awaiting implementer rework` rows, riding the same entry as the width and decaying
+  with it. `fanoutloop plan` classifies its queue and states the floor whenever a reserved class
+  is actually waiting (`fresh capped at <k> by reservation`) — **it never idles a slot** for a
+  class with nothing queued, which is what keeps this a floor and not a second cap. worker-desk
+  ships `resume=2`; the "resuming started work outranks a fresh brief" prose below is what that
+  floor is FOR, not a second, unenforced statement of it.
 - **Fill to N, refill on completion** — the instant a worker finishes (draft PR open, or done /
   NEEDS_CONTEXT), dispatch the next eligible item into the freed slot.
 - **Never stop-and-wait-for-restart.** "The plan came back empty" is a reading from ONE instrument,
@@ -82,11 +99,11 @@ empty. Repos and roots come from §THE REPO SET, never a pasted list.
 | 2 | Rows **held back** by the 4-per-stream cap or the span cap | `deskboard dispatch` — it reports the held-back decomposition (N by per-stream caps, M by span) plus per-root claim degradation, so an EMPTY queue is distinguishable from a THROTTLED one |
 | 3 | Orphan PRs owing a worker action, `CONFLICTING` PRs, red checks | the per-slug PR + disposition reads in [`references/dispatch-runbook.md`](references/dispatch-runbook.md) §The tick sweep, with the disposition read FIRST |
 | 4 | Stale drafts (reviewer verdict `CHANGES_REQUESTED` at head, author silent) | `deskboard stalled [--min-age-hours N]` — the purpose-built detector; its disposition column is advisory (shepherd / close-candidate) |
-| 5 | `Awaiting implementer rework` board rows | the board's own section, read per root from `refs/remotes/origin/main:STATUS.md` — `plan` contains none of them |
+| 5 | `Awaiting implementer rework` board rows | `fanoutloop plan --root <root>` (desk-supervision/05: read per root from `refs/remotes/origin/main:STATUS.md`, the SAME offline ref read row 1 uses — no separate sweep) |
 | 6 | Un-briefed trusted work-ready issues (§Un-briefed issues) | `issueboard issues` — fail-closed |
 | 7 | A red default branch on a watched repo | `deskboard health` — three-state (green / RED / COULD-NOT-CHECK) |
 | 8 | Cross-root coverage: a board root that no sweep reaches, or a scanned repo with no board | the BOARD ROOTS ∪ SCAN REPOS symmetric difference printed at boot (§THE REPO SET) |
-| 9 | Queue **suppressors** — expired `refs/dispatch/*` claims and dead branch-claims from merged/closed PRs | `git ls-remote origin 'refs/dispatch/*'` and the repo's `dispatch-claim` helper's list/show verbs |
+| 9 | Queue **suppressors** — expired `refs/dispatch/*` claims and dead branch-claims from merged/closed PRs | `desksupervise status --stops` (the liveness observer's runtime snapshot: per-claim liveness, timers-to-fire, and which stops are armed — the one structured read the sweep uses instead of guessing); the raw `git ls-remote origin 'refs/dispatch/*'` + the repo's `dispatch-claim` helper's list/show verbs stay as the fallback |
 
 **Rows 5 and 3 outrank row 1** — resuming started work outranks a fresh brief (mm/10) — and row 2 is
 what tells you whether row 1's zero means drained or throttled.
@@ -211,7 +228,9 @@ four must hold:**
    none of `question` / `needs-decision` / `help wanted`, not parked awaiting a reply.
 4. **Needs no triage judgment** — single-repo, no open design fork, no risk-bearing surface
    (public-repo copy, security, prod-deploy, irreversible actions). Anything needing scoping,
-   splitting, a decision or a risk call is **intake's job**. When in doubt, leave it.
+   splitting, a decision or a risk call is **intake's job**. When in doubt, leave it to intake AND
+   LEAVE A TRACE (a `question` on the issue naming the fork) — intake's strong tier picks the default
+   a reversible fork then proceeds on.
 
 **Priority is LOWEST of the dispatch sources** (WIP-draining work → board rows → un-briefed issues),
 but the ordering is a tie-break, not a hold: an empty slot with a qualifying issue and nothing above
@@ -349,9 +368,11 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
   desk's job at the `progress` step is opening the PR promptly, not writing a cell.
 - **The worker prompt is the kit, verbatim.** `deskdispatch` emits `references/common-clauses.md`
   (home-worktree isolation floor, no-evasion, offline envelope, three-state instruments,
-  escalate-durably) ahead of `references/worker-prompt.md` (security-gate refusal, per-invocation
-  `mktemp` body files, stop-at-`implemented` + the bare-token board-row shape, lineage self-check,
-  merge-never-rebase, verify-before-apply, scope + desk write verbs, release-the-claim) — both shipped
+  escalate-durably, one-workpad-per-PR) ahead of `references/worker-prompt.md` (security-gate refusal,
+  per-invocation `mktemp` body files, stop-at-`implemented` + the bare-token board-row shape, lineage
+  self-check, merge-never-rebase, verify-before-apply, scope + desk write verbs, release-the-claim,
+  fail-first evidence, public-body self-containment, changelog fragment where the repo enforces one) —
+  both shipped
   inside the binary from `tools/desk/cmd/deskdispatch/references/`. `--kits`
   lists what the installed binary carries; `--dry-run` prints the prompt it WOULD emit. **Never
   paraphrase, summarise or "improve" a kit clause at dispatch time**: each is a rule that has already
@@ -363,11 +384,54 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
 - **Tier**: `--tier` follows the brief's `exec-tier` (absent = `any`); `strong` goes only to
   session-tier and the kit carries the pickup-STOP text. Effort S may run at your session tier, M/L go
   to a cheap tier behind the review/verify gates.
-- **Cheap implementers run below the floor, but authority-bearing writes do not**: a review verdict and a ready-flip enforce a model-capability floor keyed on the dispatcher's attested tier, so a below-tier session is refused those writes even though it may implement freely — delegate downward, and escalate a verdict or flip to a strong-tier session rather than route around the refusal.
+- **Cheap implementers run below the floor, but authority-bearing writes do not**: a review verdict and a ready-flip enforce a model-capability floor keyed on the dispatcher's attested tier, so a dispatch ATTESTED below the strong tier is refused those writes even though it may implement freely — delegate downward, and escalate a verdict or flip to a strong-tier session rather than route around the refusal. A `dispatched-tier:any` stamp is not such an attestation (`any` is the brief's "no tier demanded"), so it proceeds with a NOTICE; the convention to escalate still stands.
 - **Serialize out-of-repo items** — no worktree isolation, no branch-as-claim: at most ONE in
   flight across all streams, the declaration is the claim, so check in-flight PRs for overlaps first.
 - **Placeholders stay dispatchable** (ruling 2, 2026-08-24) — and the shipped `fanoutloop plan`
   includes them, so skill and binary now agree.
+
+## Cockpit-aware worktree creation — additive, detected on PATH, never required
+
+The per-item worktree the ceremony isolates is a plain
+`git worktree add ../<repo>-<item> -b <branch> refs/remotes/origin/main`, and that path is the
+default and stays fully supported on any terminal, any OS, with nothing installed. Where the
+operator runs a **cockpit** — a terminal shell that manages git worktrees and agent sessions —
+the same isolated worktree may be cut by the cockpit's own worktree verb instead: it performs the
+identical `git worktree add` underneath and adds a titled worktree plus a live agent-presence
+badge. This is **sugar on the same primitive, not a new requirement**. The methodology is
+unchanged; the invariant is isolation off `refs/remotes/origin/main`, one worktree per dispatched
+item, and the cockpit is only a nicer way to reach it.
+
+- **Selection is by command presence on PATH, never a config flag someone must remember.** For
+  the worktree-create step of each dispatched item, resolve the FIRST that is present. Every path
+  spells the base in full as `refs/remotes/origin/main` — never the bare `origin/main`, which
+  resolves to a stray local branch of that name where one exists:
+  - `supacode` on PATH → `supacode repo worktree-new --branch <branch> --base
+    refs/remotes/origin/main --path ../<repo>-<item> --fetch` (it fetches for you and opens a
+    titled worktree in one command). Pin the base and the per-item path explicitly rather than
+    leaning on the cockpit's defaults; if the installed build accepts neither flag, do not use it
+    for the create step — fall through to the fallback rather than trust an unstated default base.
+  - else `herdr` on PATH → `git -C <repo> fetch origin && herdr worktree create --cwd <repo>
+    --branch <branch> --base refs/remotes/origin/main --path ../<repo>-<item> --label <item>` (it
+    has no `--fetch`, so fetch first, then it runs the `git worktree add` and opens a labelled
+    workspace).
+  - else the always-works fallback → `git fetch origin && git worktree add ../<repo>-<item> -b
+    <branch> refs/remotes/origin/main`.
+- **The base is verified after the create, not trusted from any tool's default.** Whichever path
+  cut the worktree, before the worker is dispatched confirm the new worktree sits at the
+  remote-tracking tip — `git -C ../<repo>-<item> rev-parse HEAD` must equal `git -C <repo>
+  rev-parse refs/remotes/origin/main` — and that it is the per-item `../<repo>-<item>` path (one
+  worktree per dispatched item, collision-free by construction). A cockpit whose base or path
+  cannot be pinned to that invariant is not used for the create step; the fallback is. This is the
+  isolation clause enforced, not merely asserted.
+- **Only the worktree-create step changes — nothing else forks.** The branch name, the
+  `refs/remotes/origin/main` base, the claim key, the roster register, the decision gate, the
+  model-stamp and the emitted worker kit are all identical; the desk still RUNS the dispatch verb
+  and honours its exits. A cockpit is chosen only where its CLI is actually on PATH, so the same
+  skill drives a fanout whether or not either cockpit is installed.
+- **The fallback is not a degraded path.** An operator with no cockpit loses only the titled
+  worktree and the presence badge, never any isolation or correctness. Nothing in a brief, a loop
+  or this skill may require a cockpit to function.
 
 ## gate:human items dispatch normally — and file the decision issue at first dispatch
 
@@ -426,7 +490,9 @@ issue list. Two states:
 
 **A question never stops the window.** `question`, `help wanted` and `needs-decision` are filings, not
 console stops: label + comment the item saying what is needed and from whom, then **carry on with the
-rest of the queue in the same tick**. The ITEM parks awaiting input; the WINDOW does not. "What should
+rest of the queue in the same tick**. For a REVERSIBLE fork the ITEM does not park either — it is
+dispatched on its stated default with the question riding on the issue/PR (the merge gate catches a
+wrong default); only a genuinely one-way fork parks the item. The WINDOW never parks. "What should
 I work on?" is not a question this desk asks at all (§Liveness contract).
 
 A hard error that halts the loop may print its final diagnostic — but if clearing it needs a human,
@@ -440,9 +506,10 @@ instrument, the last good sweep timestamp, and what re-arming was tried). Quiet 
 only while the tick line proves the instruments are alive.
 
 **File-and-exit, never block (pod-loop contract, desk-hardening/13) — scoped to POD / CronJob runs.**
-In a bounded execution (a pod or scheduled job whose run must terminate), a decision fork, a human
-gate or an external blocker the DISPATCHER loop cannot resolve is filed — or confirmed already filed —
-and the run **exits**; it never holds a bounded run open waiting. **In a live role window this clause
+In a bounded execution (a pod or scheduled job whose run must terminate), the reversibility test runs
+FIRST: a reversible fork is dispatched on its stated default and then filed with that default named;
+only a genuinely one-way / external blocker the DISPATCHER loop cannot resolve is filed unworked — or
+confirmed already filed — and the run **exits**; it never holds a bounded run open waiting. **In a live role window this clause
 does not license an exit**: the window files the same escalation and **continues with the rest of the
 queue**. The event-only resumption the original clause assumed is superseded for live windows by the
 2026-08-25 liveness ruling recorded in the project's desk liveness contract,
@@ -490,12 +557,12 @@ A hit means exit cleanly (restart by `rm <flag>` + re-arm); never halt mid-dispa
   project's own toolkit/methodology repo — commentary is not a register. Include the triggering
   evidence and affected loops. Repo-specific defects still go to that repo's own tracker (label `bug`).
 - **Escalation labels:** any desk/loop may label a PR or issue `question` (needs an answer from the
-  driver or a stronger-tier model to proceed — the item PARKS) or `help wanted` (the desk hit its
-  capability/authority edge). Both are GitHub default labels — they exist in every repo, no setup.
-  Discipline: a bare label is unanswerable — the labeler MUST comment what it needs and from whom when
-  labeling; whoever answers removes the label with their response. A `question` that matures into a
-  formal decision fork promotes to `needs-decision` with the pros/cons template. Labeled items are
-  WAITING-ON-INPUT: they join the human/escalation queue and are NOT orphans for the worker sweep.
+  driver or a stronger-tier model — the item PARKS only when the fork is one-way; a reversible item proceeds on its
+  stated default with the label riding on it) or `help wanted` (the desk hit its capability/authority edge). Both are
+  GitHub default labels — they exist in every repo, no setup. Discipline: a bare label is unanswerable — the labeler
+  MUST comment what it needs and from whom when labeling; whoever answers removes the label with their response. A
+  `question` that matures into a formal decision fork promotes to `needs-decision` with the pros/cons template.
+  Labeled items are WAITING-ON-INPUT: they join the human/escalation queue and are NOT orphans for the worker sweep.
 - **Git push policy (ONE policy, role-keyed):** MERGE IS ALWAYS the driver's, and nobody triggers
   workflows or runs mutating cluster commands without their go. **Branch push + draft PR is
   standing-authorized for every desk/loop** — the worker loop (`git push -u origin <branch>` +
@@ -508,6 +575,23 @@ A hit means exit cleanly (restart by `rm <flag>` + re-arm); never halt mid-dispa
   - Desk-specific: **any cluster or live-infrastructure contact is outside a worker's envelope —
     read-only included.** Mutating verbs stay denied for every desk role; a worker that needs live
     state reports could-not-check + BLOCKED-ON-HUMAN, never a probe.
+- **Reversibility test — default-forward on anything a human-held gate still catches:** before
+  parking an item on the driver, ask ONE question: *is a wrong guess here caught by a gate the
+  driver still controls — a draft PR awaiting merge, a filed issue awaiting close, a flip CI or a
+  human must still make?* **Yes → default-forward.** Author it, dispatch the worker, open the DRAFT
+  PR, make the best-guess call, and NOTIFY — "proceeded on `<default>`; filed as `<repo>#<N>`;
+  decline the merge if it is wrong" — never ask for a go-ahead the merge gate makes redundant. The
+  `needs-decision` / `question` issue is still filed, naming the default taken, but the ITEM does
+  not park on it. Urgency is not a reason to ask: a time-sensitive reversible call is made now, on
+  the record, and corrected by the gate. **No → STOP and wait for the human.** A wrong guess that
+  lands irreversibly or reaches outside the gate is caught by nobody declining a merge. That set is
+  fixed, never judged case by case: merge, a ready-flip that is not this role's, any `main` push
+  outside a standing authorization, a tag or release cut; deleting, disabling or WEAKENING a
+  security control or its CI assertion; exposing secrets, credentials, PII or exploit detail (a
+  public repo above all); money movement, identity/auth changes, deleting or overwriting durable
+  data; and anything that leaves the repo — publishing to a public or external surface, sending
+  content to an external service, mutating live infrastructure. A guard or tool REFUSAL is a STOP on
+  either side of the test — the test never routes around one.
 - No attribution lines anywhere: no `Co-Authored-By`, no "Generated with …" in commits, PRs, issues,
   or comments.
 
@@ -555,6 +639,12 @@ worker-desk's own.
 - **A tick keeps the dead-man lease fresh.** The desk tools refuse to run when
   `~/.config/assay/HEARTBEAT` has not been touched inside its staleness window, so the standing loop
   is the thing that keeps it current: touch it on every tick, including a quiet one.
+- **A tick reads the armed per-run stops and stops each run's worker.** Every tick, read the armed
+  per-run stops (`desksupervise status --stops`) and, for each one, `capability:stop-worker` the matching
+  dispatched worker — the cooperative `STOP.run.<key>` flag already refuses that run's next desk verb,
+  and this is the independent second layer that halts a worker which never runs another verb. `tick`
+  arms the flag itself before it reclaims a wedged run, so a reclaimed item is stop-armed the moment its
+  claim is freed for re-dispatch.
 - **A tick that did not happen is could-not-check, never idle.** Two ticks with no successful sweep is
   the silent-board-freeze class — re-arm, and if it does not clear, file it (§Output contract,
   detected blindness).

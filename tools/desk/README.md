@@ -33,11 +33,11 @@ it on day one.
 | `scanloop` | `plan` (read-only queue print), `run` (one drain pass) — the intake desk's drain consumer: it wraps the durable inbound poller, applies the trust gate BEFORE queueing, dispatches the whole-scope scan ONCE per pass (batching every mechanical item behind one branch and one PR), bounds the scan-PR coalesce window, regenerates the scan PR's title/body on every push, and records exactly ONE tracked exit per inbound item | read-only (`plan`) / outward write (`run`, through `deskpr` and `deskfile`) | yes (`run`) |
 | `reviewloop` | `plan` — pr-review-desk's BOARD REACTOR: classifies a `deskboard` sweep against an action table derived from deskboard's own ACTION constants, coalesces outward verbs on `(repo, pr, head, verb)`, and answers the #79 idle question in THREE states. Not a drain: it does not link `internal/loopengine` | read-only (spawns nothing, writes nothing, makes no GitHub call) | no |
 | `deskboot` | `<role>` — the adapter verb for a loop's BOOT seam: loop identity, worktree prune + lock, roster register, envelope preflight, token-mint proof, board summary. Fails closed with the step NAMED | local-only (delegates every step to the verb that owns it) | no |
-| `deskdispatch` | `<item-key>` — the adapter verb for a loop's DISPATCH seam: durable claim, worktree in the item's own repo, roster register, human-decision gate, model-stamp labels, assembled agent prompt from `cmd/deskdispatch/references/` | outward write (the wrapped claim + stamp) | no |
+| `deskdispatch` | `<item-key>` — the adapter verb for a loop's DISPATCH seam: durable claim, worktree in the item's own repo, the `before_run` [lifecycle hook](../../docs/desk-tools/hooks.md) (failure ⇒ exit 6, no prompt, claim released), roster register, human-decision gate, model-stamp labels, assembled agent prompt from `cmd/deskdispatch/references/` | outward write (the wrapped claim + stamp) | no |
 | `deskflip` | `<N>` — the adapter verb for a loop's LAND seam: the ready-flip gate. Refuses unless the reviewer App approved AT HEAD, checks are green, the PR is mergeable, a risk-classed PR carries a security verdict at head, and the caller is the review role | outward write | no |
 | `deskpost` | `review`, `comment`, `ready` — as the reviewer App | outward write | yes |
 | `deskpr` | `create` (draft-only), `update` (follow-up push), `edit` (body/title of the branch's open PR, no push) | outward write | yes |
-| `deskreply` | PR reply comment under the **worker** identity | outward write | yes |
+| `deskreply` | PR reply comment under the **worker** identity; `--workpad` upserts ONE marked progress comment per PR (find the worker's own newest unresolved comment carrying the workpad marker and edit it in place, or create the first one) instead of always posting a new reply — `--dry-run` reports which without writing | outward write | yes |
 | `deskfile` | `new`, `attach`, `check` — the issue-filing gate (dedupe first) | outward write | yes |
 | `deskclose` | `duplicate`, `superseded` (two-role: a worker token proposes, a reviewer token confirms or disputes), `review-request`, `manifest` — the issue-CLOSING gate (a fetched human authorization or nothing) | outward write | yes |
 | `deskdigest` | (no verbs) `--dry-run` / `--post` — the weekly batched decision queue; reports only, and writes exactly one issue: its own | outward write | yes |
@@ -46,9 +46,10 @@ it on day one.
 | `deskscanbody` | `emit`, `check` — derives the issue-loop scan PR title/body from the branch diff (#685) | local-only (git read) | no |
 | `deskevidence` | `commit` — Evidence via the Contents API, as the verifier App | outward write | yes |
 | `deskrelease` | `cut <tag>` — create-only tag ref, as the desk App | outward write | yes |
-| `deskclaim` | `acquire`, `release`, `list` — the flock-backed claimable-action lock | local-only (claims dir) | no |
+| `deskclaim` | `acquire`, `release`, `list`, `stale` — the flock-backed claimable-action lock | local-only (claims dir) | no |
+| `desksupervise` | `tick` (one classification sweep of every `state=dispatched` dispatch claim against `internal/loopengine`'s liveness taxonomy; `--claims-fixture`/`--observations-fixture` run it fully offline), `run --interval` (loop `tick` forever) — turns a wedged worker into a logged, minutes-scale reclaim (`RECLAIM-ELIGIBLE` / `BLOCKED-TIMEOUT`) instead of a silent hold on the 120-minute stale-claim backstop; fires the `after_run` [lifecycle hook](../../docs/desk-tools/hooks.md) (logged, non-fatal) when it releases or lands a claim | read-mostly (probes read the audit trail, a branch's SHA, and a PR's `updated_at`) / outward write on a non-dry-run reclaim or blocked-timeout filing | no |
 | `opmetrics` | (no verbs) — operator-layer collector: reads transcripts/beacons/claims, writes one **aggregates-only** day-file | local-only (strictly read-only against every input) | no |
-| `deskwt` | `add`, `remove`, `prune` under sanctioned prefixes | local-only | no |
+| `deskwt` | `add`, `remove`, `prune` under sanctioned prefixes; `add` runs the `after_create` [lifecycle hook](../../docs/desk-tools/hooks.md) (fatal — a failure rolls the new worktree back), `remove`/`prune` run `before_remove` (logged, deletion proceeds); each takes `--dry-run` to report the hook plan without touching anything | local-only | no |
 | `deskgit` | `fetch` (bare / `--prune` / `--pr <N>` / `--branch <B>`) — the only git verb | local-only (inbound refs) | no |
 | `desktoken` | `<role>` — mint/reuse an App installation token | local-only (token cache) | no |
 | `deskroster` | `set`, `drop`, `list`, `mine`, `width`, `repos`, `apps`, `preflight` | local-only, out-of-git (`preflight` mints a token and runs one read-only transport probe) | no |
@@ -146,9 +147,11 @@ deskroster preflight --help
 
 The first is worth internalising: `deskreply` takes **exactly two positionals** —
 `deskreply <owner/repo> <pr> --body-file F`. There is no `comment` subcommand, and the
-extra token is a refusal, not a parse warning. The second is the deliberate capability
-probe: `0` means the verb exists in this build, `5` means it does not, answered in one
-call with no output parsing — which is also how you notice you are on a stale binary.
+extra token is a refusal, not a parse warning. `--workpad` (and its `--dry-run`) are FLAGS
+layered on the same two positionals, never a third positional or a subcommand. The second
+is the deliberate capability probe: `0` means the verb exists in this
+build, `5` means it does not, answered in one call with no output parsing — which is also
+how you notice you are on a stale binary.
 
 ### 4. The write verbs, and their fallbacks
 
@@ -158,6 +161,7 @@ call with no output parsing — which is also how you notice you are on a stale 
 | Push a follow-up | `deskpr update` | `git push` |
 | Correct the PR's own body/title | `deskpr edit --body-file F [--title T]` | `gh pr edit` — but see below: the fallback runs none of the gates |
 | Reply on **your own** PR as the worker | `deskreply <owner/repo> <pr> --body-file F` | `gh pr comment` |
+| Upsert your ONE workpad comment on your own PR | `deskreply <owner/repo> <pr> --workpad --body-file F` | none — the edit path needs the candidate comment's GraphQL node id, which only the tool's own find step resolves; escalate on exit 6 rather than guess |
 | Post a review verdict / flip ready | `deskpost review\|comment\|ready` | (reviewer desk only) |
 | File an issue | `deskfile new -R <owner/repo> --title T --body-file F` | none — dedupe is the point |
 
@@ -190,6 +194,21 @@ Every write verb runs `deskkit.BodyCheck` over what you are about to post — ti
 branch name, body, and for `deskpr create` the diff against the default branch. A hit is
 exit 5. It also refuses a body that claims a named human's ruling, because no desk write
 path ever posts as a human.
+
+Pass `--explain` (on `deskpr`, `deskpost` and `deskreply`) to learn WHICH rule refused and
+WHERE without a second charged attempt. On a secret-scan refusal the verb prints one extra
+line to stderr:
+
+```
+scan-explain: rule=high-entropy-run line=42 length=40 shape=Qx…Dz (base64)
+```
+
+— the rule id (`high-entropy-run`, `decrypted-k8s-secret`, `pem-block`, `sops-block`,
+`github-token`, `aws-key-id`, `jwt`), the 1-based line of the first offending span, its
+length, and a REDACTED shape (first two and last two characters, the middle elided, plus a
+character-class summary). **The explain line never prints the offending span itself — the
+refusal must not become the leak.** Without `--explain` the refusal message is byte-for-byte
+what it was, so existing transcripts do not change shape.
 
 When the target repo is not known-private, `deskpr create`, `deskpr edit`, `deskpost` and `deskreply`
 additionally run `deskkit.SelfContainCheck` (`internal/deskkit/selfcontain.go`) over the
@@ -899,6 +918,14 @@ there was no way to say which stage that was — nor any value to move once you 
   `pr-review-desk`, `verify-desk`, `intake-desk`, `the-desk`) through the same equivalence class
   the stop flag uses, so a rename cannot reset a pool. A set width **decays after an hour**: a
   coordinator that died cannot leave a pool permanently wide.
+- **The per-class reservation — `deskroster width --role <loop> --reserve resume=N,rework=M`**
+  (example-stream/05), riding the SAME entry as the width and decaying with it. It is a FLOOR,
+  not a cap: `fanoutloop plan` classifies its queue into resume / rework / fresh and states
+  `fresh capped at <width-reserve> by reservation` only while a reserved class actually has an
+  item waiting — never idling a slot for a class with nothing queued. worker-desk ships
+  `resume=2` (protecting orphan-PR resumes, the highest-priority source) and `rework=0`.
+  `deskboard throughput` prints the same reservation as an extra column beside the width it
+  never subtracts from.
 - **The bound.** A width the role's write budget or the shared App token's concurrency ceiling
   cannot carry is **refused (exit 5) naming the maximum it will accept**. Widening buys no
   budget — every meter in the rate limiter applies to the wider pool unchanged — and an **open
@@ -1173,7 +1200,7 @@ if it is unset. It absorbs the App-token mint from
 token **in memory only** — it mints fresh per invocation and never caches it to disk.
 
 ```bash
-deskpost review  <owner/repo> <pr>     --verdict approve|request-changes --head <full-40-char-sha> --body-file F
+deskpost review  <owner/repo> <pr>     --verdict approve|request-changes --head <full-40-or-64-char-sha> --body-file F
 deskpost comment <owner/repo> <number> --body-file F     # <number> = a PR **or** an issue
 deskpost ready   <owner/repo> <pr>
 
@@ -1220,7 +1247,9 @@ APPROVED at the current head" precondition cannot be satisfied by anyone but the
 Constraints in code:
 
 - **`review`** requires `--head` — the SHA the verdict was formed against, as the **FULL
-  40-char lowercase hex** SHA (`gh pr view <N> --json headRefOid -q .headRefOid`). An
+  40- (or 64-) char lowercase hex** SHA (`gh pr view <N> --json headRefOid -q .headRefOid`).
+  (64 is admitted because `isFullSHA` matches `deskkit`'s bodycheck definition of a git SHA;
+  GitHub serves SHA-1 today, so 40 is what a caller normally passes.) An
   abbreviated or otherwise malformed value is a **usage error (exit 2, nothing audited)**
   naming the form, not a head mismatch (#214): a short SHA can never equal the resolved
   head, so without the form gate it surfaced as a "mismatch" between two SHAs differing
@@ -1435,6 +1464,15 @@ deskwt remove <path>                                   # remove ONE proven-safe 
 deskwt prune [--repo <path>] [--interval <dur>]        # bulk-reduce stale worktrees, safely
 deskwt prune --reclaim-stale-locks [--lock-ttl 24h]    # …and retire locks whose session is gone
 ```
+
+- **`add`** creates `tracker-<name>` on a new tracking branch. When a local branch of that
+  name already exists in the shared refs store — a leftover from an abandoned dispatch — it is
+  reclaimed only when proven empty (checked out in no worktree AND 0 commits ahead of its
+  upstream-or-`--base`); a branch a live worktree holds, or one carrying unpushed commits, is
+  refused (naming the worktree, or the count). A worktree whose DIRECTORY is gone is listed
+  `prunable` (a `rm -rf` without `git worktree remove`) and is **not** an owner for the holder
+  question — the reclaim ignores it; the stale entry itself is `deskwt prune`'s to drop, not
+  `add`'s (`add` acquires no second mutation).
 
 - **`remove`** refuses a dirty TRACKED tree, unpushed commits, a no-upstream branch, an
   unregistered path, or anything resolving outside the prefixes; untracked build artifacts
@@ -1697,6 +1735,28 @@ review or write an Evidence commit from a cold shell, with the App **ID** resolv
 the search path, so the failure read as a broken key rather than a wrong directory.
 
 `<ROLE>_PEM` and `<ROLE>_TOKEN` still override an individual file outright, in all three.
+
+#### `desktoken coverage <role>` — which repos a role's App sees
+
+`desktoken coverage <role> [--repo <slug>] [--json]` answers the question a coordinator
+otherwise hand-writes a JWT probe for before a roster flip or cross-org dispatch: *does
+role X's App see repo Y?* It is **read-only** on the forge and on disk. It signs the same
+App JWT the mint path signs, lists every installation of the role's App, mints a token per
+installation **into memory only**, and pages each installation's repositories — then prints
+the answer instead of discarding it. It writes **no** token cache and **no** `.perms`
+sidecar (a cache written under an enumeration would shadow the next real mint's permission
+view — the masking `--fresh` exists to undo), and it prints **no** token or JWT; the audit
+line records only role, installation count, repository count, filter and result. Output is
+one block per installation, in stable order by account login —
+`installation <id> account=<login> type=<Org|User> selection=<all|selected> repos=<n>`
+followed by one indented `<owner/name>` line per repository, sorted. `--repo <slug>` prints
+only the installation that sees that repository and exits **0** if one does, **5** if none;
+the slug is matched on `owner/name`, so a same-named repository under a different owner does
+not match. A repository page whose read fails is exit **6** naming the installation — never
+a short list presented as complete (could-not-check is not "not covered"). `--json` emits
+the same enumeration as one object: `{"installations":[{"id":…,"account":…,"type":…,
+"selection":…,"repos":["owner/name",…]}]}`. GitHub-only: `--forge gitlab` is refused with
+exit 5 — a GitLab PAT has no installation to enumerate.
 
 ### Version check (stale-binary detection)
 
@@ -2131,11 +2191,19 @@ rolling 24h". deskfile computes its own count over the audit log's `sessionTag` 
 AND the ordinary outward-write budget, which for `new` uses `AllowWriteRepoWide` (a create's
 number cannot be known in advance, the #439 lesson).
 
-Rotating `$CLAUDE_SESSION_ID` does reset the bucket — a new session is a new session — but
+**The tag is the FILING agent's, not the dispatcher's.** `deskkit.SessionTag()` reads
+`$DESK_SESSION` ahead of the harness's own session id, because a dispatched agent is a child
+process and inherits that id verbatim — every agent in a fan-out reports the dispatcher's.
+Keyed on the inherited id the budget would cover the whole fan-out rather than an agent: the
+first agent to file three would exhaust every sibling's, and the rest would be refused having
+filed nothing. Each agent gets its own 3; the cap itself is unchanged, so being dispatched
+alongside others buys no agent a larger budget.
+
+Rotating the session id does reset the bucket — a new session is a new session — but
 **every `new` audit line records the sessionTag it charged**, so rotating to buy budget
 leaves a trail rather than erasing one. That trace is the control here, not a hard block.
-Sessions with the variable unset all share the single `unknown` bucket (the conservative
-direction). deskfile **gates WHETHER and WHERE, never WHO**: the caller's ambient `gh`
+Sessions with no session variable set at all share the single `unknown` bucket (the
+conservative direction). deskfile **gates WHETHER and WHERE, never WHO**: the caller's ambient `gh`
 credential is the filing identity and no App token is ever minted. Repo scope comes from
 `deskkit.IsAllowedRepo` — there is no second repo list, and a test parses the sources to
 prove it.
@@ -2581,6 +2649,8 @@ deskgit fetch                 # refs/remotes/origin/*
 deskgit fetch --prune         # + drop stale remote-tracking refs
 deskgit fetch --pr <N>        # pull/<N>/head -> local branch pr<N>   (N digits only)
 deskgit fetch --branch <B>    # origin's <B> -> local branch <B>      (see --branch guards)
+deskgit fetch --as <role>     # any fetch mode above, authenticated from <role>'s token file
+deskgit push --as <role>      # push the CURRENT branch to origin, authenticated
 ```
 
 `--branch` refuses `main`/`master` **in any case** (`Main`, `MASTER`, `mAiN`, …). Separately,
@@ -2691,8 +2761,58 @@ deskgit closes the proven upload-pack, env, fetch-refspec and submodule vectors,
 insteadOf **identity-substitution** vector for **both** host-bearing URLs and bare local
 paths (the latter via the local-roots allowlist, #215). It claims no more.
 
-It is a **local-read verb**: network read-only, no outward write, no credentials, so — like
-`deskwt` — it takes the audit line (C-5) and kill switch (C-6) but NOT the rate limit.
+### Authenticated transport — `--as <role>` (fetch and push)
+
+`--as <role>` supplies a role's App installation token to git from the 0600 token file the
+role already owns, and is the **sanctioned replacement for the inline credential-helper
+recipe** the desk roles used to retype before every push and private-remote refresh (the
+shell-function helper that reads the token file, needed because the shared checkout's ambient
+helper shadows per-worktree config and a token-in-URL is refused by policy). It puts that
+token path behind the same fixed-argv guard the rest of `deskgit` enforces. `deskgit fetch`
+(no `--as`) is unchanged: no identity check, no credential path.
+
+**What the token never touches.** It is READ from the role's token file and PASSED to the
+one child git process through exactly one environment variable (`DESKGIT_TOKEN`) and an
+ephemeral `GIT_ASKPASS` script (`x-access-token` as the username; `$DESKGIT_TOKEN` as the
+password), in a private `0700` temp dir removed on **every** return path including error. The
+token is **never** placed in argv, in a URL, in stdout/stderr, or in the audit line. The argv
+carries `-c credential.helper=` **before the verb**, which clears the helper list on the
+command line so **no ambient or configured credential helper is ever consulted** — only this
+askpass answers.
+
+**Identity binding.** `--as <role>` MUST equal the App role this session's loop identity
+binds (`$DESK_LOOP` → `deskkit.SessionTokenRole`); a mismatch is exit 5 **before any token is
+read**, so a session cannot borrow another role's token by naming it. The token is minted per
+**owner** of the effective origin slug (never a caller `--repo`), so it authenticates only the
+repository the effective-URL gate already admitted.
+
+**`deskgit push --as <role>`** pushes the **current branch** to origin over that authenticated
+transport, with a FIXED argv and nothing appendable:
+
+```
+git -c credential.helper= push --receive-pack=git-receive-pack origin refs/heads/<B>:refs/heads/<B>
+```
+
+- `<B>` is the current branch (`symbolic-ref --short HEAD`), validated by the **same** rule
+  `fetch --branch` uses and **never `main`/`master` in any case**; a **detached HEAD** has no
+  branch to push and is refused (exit 5).
+- `--receive-pack=git-receive-pack` is pinned (the push-side twin of fetch's upload-pack pin),
+  overriding any config/env receive-pack.
+- `--force`/`--force-with-lease`, `--delete`, `--prune`, `--mirror`, `--tags` and `--no-verify`
+  are refused **by name, with their own reason, before the FlagSet** (`checkPushSafety`); a
+  caller `--receive-pack` is refused by the transport-exec guard. None of them is in the
+  constructed argv, so none can be reached by any spelling.
+- push gates on the effective origin URL exactly as fetch does, is charged to the
+  **outward-write budget** (`deskkit.AllowWrite`, unlike fetch), and its **pre-push hook**
+  (`deskpushguard`, via `core.hooksPath`) still runs — no `--no-verify` is ever passed.
+
+`deskpr`'s own push is deliberately **not** routed through this verb yet; that is a follow-up
+once `push --as` is verified.
+
+Plain `deskgit fetch` (no `--as`) is a **local-read verb**: network read-only, no outward
+write, no credentials, so — like `deskwt` — it takes the audit line (C-5) and kill switch
+(C-6) but NOT the rate limit. `push --as` and `fetch --as` add the credential channel above;
+`push` additionally takes the outward-write budget.
 Exit: `0` ok · `3` disabled · `5` refused · `6` unverifiable.
 
 **The allowlist half lives in the consuming repo**, not here — this repo ships the binary.
@@ -3185,16 +3305,70 @@ mutual-exclusion **LOCK**: it decides who owns a handoff so two racers cannot bo
 route, file, close, or verify the same item.
 
 ```bash
-deskclaim acquire --kind dispatch --item stream-a/01 [--branch B] [--owner O]
+deskclaim acquire --kind dispatch --item stream-a/01 [--branch B] [--owner O] [--repo R]
 deskclaim release --item stream-a/01
 deskclaim list
+deskclaim stale   --item stream-a/01 [--repo R]
 ```
 
 `acquire` exits **0** when the claim is acquired (a fresh create, or a stale reclaim), **5**
 when a live holder already owns the item (do NOT proceed), and **6** when the lock could not
 be held or the claim could not be read/written. That exit-6 is the load-bearing contract:
 **no path may degrade to "proceed unclaimed / assume free."** A lock this process cannot hold
-is `Unverifiable`, never a silent success.
+is `Unverifiable`, never a silent success. When it takes over a stale claim its stdout says
+`reclaimed` (not `acquired`) and its audit line carries `reclaimed age=<m>m ttl=<m>m
+prior-owner=<o> because=old-no-live-signal`, so a later sweep can see the reclaim happened
+through the tool — under the flock — rather than by hand.
+
+### Branch liveness — reclaiming a `--branch` claim through the tool (`stale` + the probe)
+
+A claim recorded with `--branch` is protected from age-only reclaim: `deskkit.isStale` will not
+steal it unless a probe can PROVE the branch is no longer doing live work. Before the probe was
+wired into the CLI, no such proof was ever supplied, so **every `--branch` claim was
+un-reclaimable through the tool at any age**, and the only exit left was a hand-delete of the
+claim file — which bypasses the directory-wide `flock` that closes double-dispatch. **A
+hand-delete of a claim file is never the remedy; run `deskclaim stale` then `deskclaim acquire`
+instead** — both take the lock, both leave an audit line.
+
+`deskclaim stale` is the **read-only** verdict — it computes exactly what an `acquire` would
+decide but never acquires, releases, or rewrites (the claim file's bytes and mtime are
+untouched). It prints one line:
+
+```
+item=<I> age=<m>m ttl=<m>m branch=<B|-> holder=<owner> verdict=<stale|live|unreadable> because=<…>
+```
+
+| `verdict` | exit | meaning |
+|-----------|------|---------|
+| `stale`      | **0** | reclaimable — old, and every readable liveness signal says the branch is inactive |
+| `live`       | **5** | do NOT reclaim — inside the TTL, or a signal proves the branch/session is alive, or a required signal could not be read |
+| `unreadable` | **6** | the claim is missing (nothing to reclaim) or could not be read — never reported as stale |
+
+The `because` vocabulary (the reason for the verdict):
+
+| `because` | verdict | why |
+|-----------|---------|-----|
+| `age-under-ttl`             | live  | the claim is younger than its TTL (`deskkit.DefaultStaleClaim` = 120m); the age floor decides before the probe runs |
+| `branch-checked-out:<path>` | live  | the branch is checked out in a registered worktree of `--repo` at `<path>` |
+| `beacon-live`               | live  | the owner session re-stamped its roster beacon within the 60-minute freshness window |
+| `no-repo-cannot-prove`      | live  | a required liveness signal could not be read — `--repo` is absent or not a git repo, or the roster beacon dir is unreadable — so inactivity cannot be proven (fail-closed) |
+| `old-no-live-signal`        | stale | old, and every readable signal says the branch is not doing live work — reclaimable |
+
+**Fail-closed composition (the load-bearing rule).** A branch is judged INACTIVE only when
+EVERY signal the probe can actually read says so; a signal it could not look at counts as
+ACTIVE. The probe reads two signals and never contacts the forge: (1) is the branch checked
+out in a registered worktree of `--repo` (`git worktree list --porcelain`)? (2) does the
+claim's owner session have a fresh roster beacon? The only path to `stale` is: `--repo` is a
+readable git repo **and** the branch is checked out in none of its worktrees **and** the
+beacon dir is readable **and** the owner's beacon is gone. A branch that exists only on a
+remote — a worktree on another machine — is invisible to the local `git worktree list`; that
+is why the beacon is a second, independent signal, and why an unreadable beacon dir keeps the
+claim `live` rather than stealing it.
+
+**Scope boundary.** This probe governs only the machine-local claim files under the config
+home's `claims/` dir. The `dispatch` kind's cross-machine form — the forge ref
+`refs/dispatch/*` written by `tools/dispatch-claim.sh` — is OUT OF SCOPE: its reclaim is a
+forge-side decision with no TTL in this library, and `deskclaim stale`/`acquire` never touch it.
 
 **Why a binary and not a shell line (the #146 close).** The atomic-claim idiom used to live
 in a shell `(set -C; … > "$f")`. The `writeguard` hook blocks the `>` redirect, so an agent

@@ -18,7 +18,8 @@ type stub struct {
 type reply struct {
 	match  string // matched against the joined argv
 	stdout string
-	code   int // non-zero exits with this code, so the wrapped scripts' 5/6 contract is exercised
+	stderr string // what the child writes to stderr; defaults to "stub-failure" on a non-zero code
+	code   int    // non-zero exits with this code, so the wrapped scripts' 5/6 contract is exercised
 }
 
 // install wires the recording seam and returns (home, root). root is a REAL directory
@@ -41,8 +42,14 @@ func (s *stub) install(t *testing.T) (home, root string) {
 		for _, r := range s.replies {
 			if strings.Contains(joined, r.match) {
 				if r.code != 0 {
+					// A real desk tool's stderr is its config echo THEN its own message; a
+					// stub that emits one line cannot show a step report losing the second.
+					msg := r.stderr
+					if msg == "" {
+						msg = "stub-failure"
+					}
 					return exec.Command("/bin/sh", "-c",
-						"echo stub-failure 1>&2; exit "+itoa(r.code))
+						"cat <<'STUBEOF' 1>&2\n"+msg+"\nSTUBEOF\nexit "+itoa(r.code))
 				}
 				return exec.Command("/bin/sh", "-c", "cat <<'STUBEOF'\n"+r.stdout+"\nSTUBEOF")
 			}
@@ -149,7 +156,9 @@ func TestDispatchClaimsFirstThenBuildsTheWorktreeAndEmitsThePrompt(t *testing.T)
 		`mktemp "${TMPDIR:-/tmp}/pr-body.XXXXXX"`, // the body-file rule
 		"this item requires a strong implementer", // the strong-tier pickup STOP
 		"It is not your writable root",            // the checkout base is not writable
-		root,                                      // the checkout base, stated ABSOLUTE
+		"NEVER run the whole-module `go test ./...` inside the agent", // bounded-Verify: no full-module run in-agent
+		"PUSH before you start a long Verify row",                     // bounded-Verify: push guards against a watchdog kill
+		root, // the checkout base, stated ABSOLUTE
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("the emitted prompt is missing %q — a dispatched agent without this clause is the "+

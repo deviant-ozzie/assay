@@ -220,3 +220,52 @@ read it, decide, and say what you decided in the PR body; it is not a pass.
 
 Run it over your body BEFORE you open the PR rather than discovering it at the refusal:
 it is the same code either way, and the round trip is better spent on the wording.
+
+## 11. Changelog fragment — part of the deliverable where the repo enforces one
+
+> If the target repo carries `changelog/README.md`, your PR is INCOMPLETE until it adds a
+> `changelog/<slug>.md` fragment — `<slug>` is your branch name — holding at least one
+> `- …` highlight bullet (optionally grouped under an `### Added`, `### Fixed`, or
+> `### Changed` heading). Never edit a top-level `CHANGELOG.md`; the aggregate is assembled
+> from the per-PR fragments at release time.
+
+Detect it, do not remember it: `test -f changelog/README.md` in the checked-out tree tells
+you whether this repo enforces a fragment. Most repos do not, and there this clause is inert.
+
+The check that enforces the fragment reads the DIFF against the PR base, so it does NOT
+reproduce on a local test run — a clean local build is not evidence the fragment is present.
+Write the fragment before you open the PR; discovering it from the red check costs a whole
+follow-up round for a one-line file.
+
+The fragment is your default deliverable. The `changelog:skip` waiver is a label the desk or
+a human applies, NEVER one you self-apply; if the change is genuinely not notable, either add
+the fragment anyway or say in the PR body why it is skip-worthy and leave the label to them.
+An empty or bullet-less fragment is rejected — a touched file is not a fragment.
+
+## 12. Bounded Verify runs — targeted tests only, and push before a long one
+
+> Run every Verify row BOUNDED inside the agent: a targeted `go test -run '<TestName>'
+> ./<pkg>/...` or one package's tests, with an explicit `-timeout` well under the agent's
+> time budget. NEVER run the whole-module `go test ./...` inside the agent. A full-module
+> run can overrun the agent's watchdog; when the watchdog fires it KILLS the agent
+> mid-row, and the branch is left where it was when the row started. CI is the full-suite
+> gate — the agent proves the one thing the row asserts, not the whole matrix.
+
+> PUSH before you start a long Verify row. Commit the work in hand and `deskpr update`
+> first, so a row that overruns the watchdog costs you the ROW, not the branch. Progress
+> that lives only in an unpushed worktree does not survive the agent being killed.
+
+Both halves are one field failure seen whole. A worker reached the end of its work and ran
+`go test ./...` to self-check; the module's full suite ran past the agent's time budget; the
+watchdog killed the agent mid-run; and because nothing had been pushed since the last edit,
+the entire session's work was stranded and had to be re-dispatched from cold with no branch
+to resume. A targeted `-run` finishes inside the budget and gives the same signal for the
+row it covers; an explicit `-timeout` turns a hang into a fast, diagnosable test failure
+instead of a watchdog kill you cannot read; and the periodic push in §6 plus a push before
+any long-running command means the worst a killed agent costs is the current step.
+
+The `go test ./...` prohibition is about running it INSIDE the agent, not about the suite
+itself. The full module suite is exactly what CI runs, on a runner with no agent watchdog
+over it — leave the whole-matrix run to CI and keep the agent's own runs scoped to what the
+row in front of you needs to prove. This is the same boundary §9's fail-first run already
+draws: `go test ./<pkg>/... -run '<TestName>'`, never the bare `./...`.

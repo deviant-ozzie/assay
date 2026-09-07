@@ -187,6 +187,33 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	briefProblems, briefNotices := checkBriefFiles(checkStreams, edgeStreams)
 	problems = append(problems, briefProblems...)
 	notices = append(notices, briefNotices...)
+	// Split-flag conservation: a child brief may not carry a weaker gate/risk flag
+	// than the brief it was split from (splitflags.go). checkStreams is the scoped
+	// child set; edgeStreams resolves the parent even when scoping dropped its
+	// stream — the same split checkBriefFiles uses for depends:/unblocks:.
+	splitProblems, splitNotices := splitFlagProblems(checkStreams, edgeStreams)
+	problems = append(problems, splitProblems...)
+	notices = append(notices, splitNotices...)
+	// §8 spec/scoping-doc lifecycle lint (spec-routing/01, spec/lifecycle-v1.md §8):
+	// an approved/routed document missing `**Routes-to:**` is a hard PROBLEM (§8.3);
+	// an unclassified `**Status:**` first token is a NOTICE (§8.1); an approved
+	// document no brief's sources: dereferences is an advisory owed NOTICE (§8.5).
+	// Runs against the FULL house set so citation is evaluated across every brief,
+	// and over spec/** + docs/** so a spec doc outside a product scope is still
+	// checked. A doc carrying no `**Status:**` header is unclassified/legacy and is
+	// IGNORED, never defaulted up to approved (§8.6) — so this never reds a tree
+	// whose specs predate the header.
+	lifecycleProblems, lifecycleNotices := lifecycleLintChecks(root, streams)
+	problems = append(problems, lifecycleProblems...)
+	notices = append(notices, lifecycleNotices...)
+
+	// derived-board/04: a hand edit to a board: generated stream README's
+	// marker-wrapped Briefs table (its authoring columns) is a PROBLEM, the same
+	// single-writer defect as hand-editing STATUS.md (rule 47). Offline, tree-only,
+	// scoped to board: generated streams — an unwrapped README is untouched.
+	readmeTableProblems, readmeTableNotices := checkReadmeTables(checkStreams)
+	problems = append(problems, readmeTableProblems...)
+	notices = append(notices, readmeTableNotices...)
 	// #1250 ordering-gate lint (dependency-graph-design.md §6): flags gate-shaped
 	// README/brief prose ("no X before Y", "blocked on", "gated on") whose real
 	// ordering prerequisite is encoded in no `depends:`/`unblocks:` edge, so an
@@ -274,7 +301,48 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// that has not adopted the field.
 	rootRepoName, repoProblems := rootRepo(streams)
 	problems = append(problems, repoProblems...)
-	problems = append(problems, registerIntegrityProblems(root)...)
+	// Register-integrity check, path-scoped by the CI-supplied --changed set the
+	// same way the DAR/product-scope checks already are. With NO --changed set (a
+	// full-tree / main-side regen) this is unchanged: every register defect is a
+	// hard PROBLEM. With a --changed set (the PR-side gate) a pre-existing defect
+	// on a register file the diff never touched demotes to a NOTICE — it is
+	// already red on main's own status-regen, which owns it — so one unrelated
+	// main-side register defect no longer hard-fails every open PR that touches
+	// docs/streams/**. A defect the PR's own diff introduces or touches (that file
+	// in the changed set) still fails: the gate keeps its teeth for the case it
+	// exists for.
+	regProblems, regNotices := registerIntegrityScoped(root, changed)
+	problems = append(problems, regProblems...)
+	notices = append(notices, regNotices...)
+	// REQUIREMENTS register (registers-v1 §6): per-entry shape validation —
+	// slug id, the ordered impact axis, the lifecycle, acceptance criteria,
+	// typed satisfied-by refs. The paired NOTICE states what is NOT checked:
+	// traceability is reserved, so an uncited requirement changes no exit code.
+	problems = append(problems, requirementRegisterProblems(root)...)
+	notices = append(notices, requirementRegisterNotices(root)...)
+	// Requirement TRACEABILITY (registers-v1 §6.5, sdlc/02): the three corpus-wide
+	// checks §6.5 deferred as reserved, landed advisory-first (§4.5). orphan-
+	// requirement (an accepted requirement no brief cites) and untraced-brief (a
+	// forward brief in a `traced:` stream citing nothing) are NOTICEs that never
+	// change the exit code; dangling-satisfies (a satisfies: naming an in-repo REQ
+	// id no entry defines) is a hard PROBLEM, because the append-only register
+	// makes a missing in-repo id a typo or a deleted entry, never legacy debt. Runs
+	// on the FULL stream set, never checkStreams: a requirement's satisfying brief
+	// may live in any stream, so a product-scoped subset would manufacture false
+	// orphans. Pure over the tree, same offline envelope as the register checks.
+	problems = append(problems, danglingSatisfiesProblems(root, streams)...)
+	notices = append(notices, orphanRequirementNotices(root, streams, time.Now())...)
+	notices = append(notices, untracedBriefNotices(streams)...)
+	// Design-approval gate (sdlc/05, spec/lifecycle-v1.md §4.4): a RISK-GATED brief
+	// authored after the cutover may not sit at in-progress-or-later without an
+	// approved design-decision record (DR-<slug> under docs/streams/decisions/).
+	// Scoped — gate: model all-risks-no briefs are untouched — and grandfathered by
+	// authoring date, so the pin bump reds nothing already in flight. The paired
+	// NOTICE carries the three-state could-not-check when the register is
+	// unreadable. Runs on the product-scoped subset for the gate and reads the
+	// register at root. Declared source: statusgen/designgate.go.
+	problems = append(problems, designGateProblems(root, checkStreams)...)
+	notices = append(notices, designGateNotices(root, checkStreams)...)
 	// The register field-gutting guard inside registerIntegrityProblems compares
 	// against the merge-base with origin/main. When that ref is unresolvable the
 	// base falls back to HEAD and already-committed gutting is compared against
@@ -324,6 +392,16 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	offBoardProblems = append(offBoardProblems, darProblems...)
 	notices = append(notices, darNotices...)
 	problems = append(problems, attributionProblems(checkStreams)...)
+	// Verified-cell / Evidence-runner AGREEMENT (F-verify-self-attest family): a
+	// NOTICE per `verified`/`done` brief whose Verified cell credits a runner other
+	// than the actor who ran a strict majority of its own Evidence rows — the drift
+	// a legitimate Verify-table RE-RUN leaves behind when the register cell keeps
+	// naming the original verifier while the re-run stamped the Evidence with the
+	// shepherd's identity. NOTICE for the same reason as evidenceActorNotices above
+	// (a pre-check backlog, and a residual cross-namespace false-positive); it
+	// changes no exit code and weakens no verification-integrity assertion. Offline,
+	// tree-only. Declared source: statusgen/verifiedrunneragree.go.
+	notices = append(notices, verifiedRunnerDisagreementNotices(checkStreams)...)
 	problems = append(problems, verifySectionProblems(checkStreams)...)
 	// Reverse-orphan (distribution/13 Task E-a): a README brief ROW whose brief
 	// FILE is absent is a phantom brief. checkBriefFiles guards the forward
@@ -389,6 +467,16 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// *.md under docs/**, so its inputs INCLUDE every stream README and brief
 	// file. It is also the only check that catches a README row whose brief file
 	// does not exist — see the classification comment above.
+	// Declared fixture corpora (fixturecorpus.go). Runs BEFORE the link lint it
+	// narrows, so the log reads in the order the reader needs it: what was
+	// exempted, then what was checked. One NOTICE per honoured corpus naming the
+	// subtree and its file count — an exemption is never silent — and one PROBLEM
+	// per marker declared outside docs/streams/<corpus>/, which is inert in the
+	// resolver and refused here so the author is told rather than left with a
+	// mechanism that quietly does nothing.
+	fcProblems, fcNotices := fixtureCorpusChecks(root)
+	problems = append(problems, fcProblems...)
+	notices = append(notices, fcNotices...)
 	docs, docWalkProblems := docFiles(root)
 	// An unreadable docs subtree is a could-not-check, not zero problems: surface
 	// it so the lint fails instead of passing on a truncated file set
@@ -1050,6 +1138,15 @@ func main() {
 		os.Exit(runReconcile(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
+	// `statusgen regen --readmes` — positional subcommand (derived-board/04) that
+	// regenerates the marker-wrapped Briefs table in every board: generated stream
+	// README from the brief frontmatter, and — with an online --repo — prints the
+	// board-vs-witness drift NOTICEs. STATUS.md stays the default (flags-only)
+	// regen's job; this verb only touches stream READMEs.
+	if len(os.Args) > 1 && os.Args[1] == "regen" {
+		os.Exit(runRegen(os.Args[2:], os.Stdout, os.Stderr))
+	}
+
 	// `statusgen conform` — positional subcommand (like `verifyrun` above) that
 	// validates brief frontmatter against the embedded, machine-readable brief-v1
 	// contract (schemas/brief-v1.json) and, with --emit-schema, prints that
@@ -1063,6 +1160,16 @@ func main() {
 		os.Exit(runConform(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
+	// `statusgen brief <stream/NN>` — resolve an item key to its file, frontmatter
+	// and board row, as JSON (desk-tools/12, briefinfo.go). Intercepted before flag
+	// parsing for verifyrun's reason: it owns --root and its own --json/--text, and
+	// it takes POSITIONAL keys the parent parser would reject. It is READ-ONLY and
+	// offline — a lookup verb that prints what --lint already parses, never a board
+	// write — so it is a subcommand rather than a --lint leg.
+	if len(os.Args) > 1 && os.Args[1] == "brief" {
+		os.Exit(runBriefInfo(os.Args[2:], os.Stdout, os.Stderr))
+	}
+
 	// `statusgen init` — positional subcommand (like `git init`) that scaffolds the
 	// streams structure into a repo. Intercepted before flag parsing so first-run
 	// users get the natural `statusgen init` UX; `--root DIR` targets DIR.
@@ -1070,7 +1177,24 @@ func main() {
 		fs := flag.NewFlagSet("init", flag.ExitOnError)
 		var initRoots rootFlags
 		fs.Var(&initRoots, "root", "repository root to scaffold")
+		dryRun := fs.Bool("dry-run", false, "print what would be scaffolded (paths + bodies) without writing anything")
+		forgeFlag := fs.String("forge", "", "which forge's CI half to scaffold: github | gitlab (default: auto-detect from the origin remote, falling back to github)")
 		fs.Parse(os.Args[2:])
+		forge, err := parseForgeFlag(*forgeFlag)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "statusgen:", err)
+			os.Exit(2)
+		}
+		// The target may be given as --root DIR or as a single trailing positional
+		// (`statusgen init [--dry-run] DIR`); the positional is the natural
+		// first-run UX. Exactly one target either way.
+		if pos := fs.Args(); len(pos) > 0 {
+			if len(initRoots) > 0 || len(pos) > 1 {
+				fmt.Fprintf(os.Stderr, "statusgen: init takes exactly one target — a single --root or a single positional DIR, not both/several\n")
+				os.Exit(2)
+			}
+			initRoots = rootFlags{pos[0]}
+		}
 		// Scaffolding is inherently one-repo-at-a-time; taking the first of
 		// several silently would scaffold the wrong tree.
 		resolved, err := resolveRoots(initRoots)
@@ -1082,14 +1206,32 @@ func main() {
 			fmt.Fprintf(os.Stderr, "statusgen: init accepts exactly one --root; got %d — scaffold one repo at a time\n", len(resolved))
 			os.Exit(2)
 		}
-		os.Exit(runInit(resolved[0]))
+		// An explicit --forge wins; otherwise detect from the target's origin
+		// remote (runInit does the detection). --dry-run previews either way.
+		if forge != forgeUnknown {
+			os.Exit(runInitForge(resolved[0], forge, *dryRun))
+		}
+		os.Exit(runInit(resolved[0], *dryRun))
+	}
+
+	// `statusgen newbrief` — the brief-authoring FRONT DOOR (mistake-proofing/05,
+	// B1): a generator that emits a lint-clean brief skeleton with the gate DERIVED
+	// from the risk answers (refusing a supplied gate, and — non-interactive — an
+	// unanswered risk question), the wave DERIVED from the dependencies (refusing a
+	// nonexistent one), the INVERSE edge written into each dependency in the same
+	// change, and the freshness stamp produced by a fetch it performs (could-not-
+	// check on failure, never an invented value). Intercepted before flag parsing
+	// for verifyrun's reason: it owns its own --stream/--depends/--risk namespace,
+	// and it must NOT be reachable by fallthrough to the default write mode.
+	if len(os.Args) > 1 && os.Args[1] == "newbrief" {
+		os.Exit(runNewBrief(os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
 	}
 
 	// UNKNOWN POSITIONAL SUBCOMMAND — fail closed (#1075).
 	//
 	// Every genuine positional subcommand (verifyrun, mergecheck, shardcheck,
-	// conform, init; plus the sole-argument version/--version handled at the top)
-	// has been intercepted above. What remains here as os.Args[1] is either a flag (begins
+	// conform, brief, init; plus the sole-argument version/--version handled at
+	// the top) has been intercepted above. What remains here as os.Args[1] is either a flag (begins
 	// with "-", which the flag parser below owns) or a bare non-flag token — and a
 	// bare non-flag token can now only be a misspelled or nonexistent subcommand.
 	//
@@ -1105,7 +1247,7 @@ func main() {
 		first := os.Args[1]
 		if first != "" && !strings.HasPrefix(first, "-") {
 			fmt.Fprintf(os.Stderr, "statusgen: unknown subcommand %q\n", first)
-			fmt.Fprintln(os.Stderr, "known subcommands: init, verifyrun, mergecheck, shardcheck, conform, backfill, reconcile, enforcement-status, version")
+			fmt.Fprintln(os.Stderr, "known subcommands: init, newbrief, verifyrun, mergecheck, shardcheck, conform, brief, backfill, reconcile, regen, enforcement-status, version")
 			fmt.Fprintln(os.Stderr, "(for the default regenerate, pass flags only — e.g. --root DIR, --check, --lint)")
 			os.Exit(2)
 		}
@@ -1133,6 +1275,11 @@ func main() {
 	// needs-decision issue. Same STATUS.md-free discipline as verify-issues.
 	decisionIssuesMode := flag.Bool("decision-issues", false, "emit JSON for newly-eligible needs-decision (gate:human + implemented/verified) briefs")
 	decisionMarkers := flag.String("decision-markers", "", "file of already-existing decision-issue markers (one per line, or raw issue bodies)")
+	// Authoring-owed issues (spec-routing/01, spec/lifecycle-v1.md §8.5) —
+	// self-contained, STATUS.md-free, offline, same discipline as --decision-issues.
+	// One JSON issue payload per approved-but-uncited spec/scoping document.
+	owedIssuesMode := flag.Bool("owed-issues", false, "emit JSON for approved-but-uncited spec/scoping documents (spec/lifecycle-v1.md §8.5): one authoring-owed issue payload per document with no open owed issue")
+	owedMarkers := flag.String("owed-markers", "", "file of already-existing authoring-owed issue markers (one per line, or raw issue bodies)")
 	// Drive lifecycle issues (methodology-metrics phase 2) — self-contained,
 	// STATUS.md-free, offline. Emits the drive tracking issue + aged operator-act
 	// issues + the @operator ping decision as JSON, same discipline as decision-issues.
@@ -1267,7 +1414,14 @@ func main() {
 	reviewReworkMode := flag.Bool("review-rework", false, "emit the CHANGES_REQUESTED rounds/PR distribution over brief-linked merged PRs, from the full (un-laundered) reviews array. Reuses --since / --until / --json; reads gh")
 	decisionLatencyMode := flag.Bool("decision-latency", false, "emit the needs-decision queue's latency (created->closed, p50/p90 hours) + live WIP + oldest-open age. Reuses --since / --until / --json; reads gh")
 	netFlowMode := flag.Bool("net-flow", false, "emit per-stream net flow (historian arrivals - completions in the window) plus a live stall flag (active ∧ backlog>0 ∧ no transition >=14d). Reuses --since / --until / --json")
+	assayScoreMode := flag.Bool("assayscore", false, "emit the composite AssayScore (statusgen/08): geometric mean of the four 0–100 sub-scores (Speed/Flow/Quality/Value) rolled up from the brief-flow metrics, always published with its four sub-scores + raw inputs + baseline_window. A could-not-check dimension is excluded (never coerced to 0) and the composite is flagged `incomplete`. Reuses --since / --until / --json; Quality/Value read gh")
 	launchMode := flag.Bool("launch", false, "print launch-readiness rollup — transitive depends: of the go-live gate (assay-launch/05) with live status (never reads/writes STATUS.md)")
+	// Per-release requirement traceability rollup (sdlc/02): per requirement, its
+	// acceptance criteria, the briefs that name it, each brief's status + Evidence,
+	// and a three-state per-requirement verdict (satisfied | partial |
+	// could-not-check). An INPUT to --export-evidence (sdlc/08), never a second
+	// bundler. Read-only, STATUS.md-free, offline. Reuses --since / --json.
+	requirementsRollupMode := flag.Bool("requirements-rollup", false, "emit the per-release requirement traceability rollup: per requirement its acceptance criteria, the briefs that name it, each brief's status + Evidence, and a three-state verdict (satisfied | partial | could-not-check). Reuses --since / --json; reports what was authored, not measured (registers-v1 §6.4)")
 	launchTarget := flag.String("launch-target", "assay-launch/05", "target brief for --launch (default assay-launch/05)")
 	// Evidence-bundle export (gtm/05): deterministic tarball of briefs, registers,
 	// and Evidence blocks in a date range, with a generated manifest.json.
@@ -1343,6 +1497,7 @@ func main() {
 		if name := singleRootOnlySubcommand(map[string]bool{
 			"--verify-issues":         *verifyIssuesMode,
 			"--decision-issues":       *decisionIssuesMode,
+			"--owed-issues":           *owedIssuesMode,
 			"--drive-issues":          *driveIssuesMode,
 			"--signoff-digest":        *signoffDigestMode,
 			"--scan-issues":           *scanIssuesMode,
@@ -1367,9 +1522,11 @@ func main() {
 			"--review-rework":         *reviewReworkMode,
 			"--decision-latency":      *decisionLatencyMode,
 			"--net-flow":              *netFlowMode,
+			"--assayscore":            *assayScoreMode,
 			"--roadmap":               *roadmapMode,
 			"--bottleneck":            *bottleneckMode,
 			"--launch":                *launchMode,
+			"--requirements-rollup":   *requirementsRollupMode,
 			"--export-evidence":       *exportEvidenceMode,
 			"--graph":                 *graphMode != "",
 			"--gate-scores":           *gateScoresMode,
@@ -1446,6 +1603,12 @@ func main() {
 	// implemented/verified lacking an open needs-decision issue.
 	if *decisionIssuesMode {
 		os.Exit(runDecisionIssues(*root, *decisionMarkers))
+	}
+	// Authoring-owed issues (spec-routing/01): self-contained, STATUS.md-free,
+	// offline. Emits one JSON issue payload per approved spec/scoping document
+	// whose path no brief's sources: dereferences (spec/lifecycle-v1.md §8.5).
+	if *owedIssuesMode {
+		os.Exit(runOwedIssues(*root, *owedMarkers))
 	}
 	// Drive lifecycle issues (methodology-metrics phase 2): self-contained, same
 	// STATUS.md-free discipline as decision-issues. Emits the active-drive tracking
@@ -1622,6 +1785,9 @@ func main() {
 	if *netFlowMode {
 		os.Exit(runNetFlow(*root, *since, *doraTimingUntil, *doraJSON))
 	}
+	if *assayScoreMode {
+		os.Exit(runAssayScore(*root, *since, *doraTimingUntil, *doraJSON, ghBFPRSource{}, ghDecisionQueueSource{}))
+	}
 	// Roadmap deck overview + per-stream pages — RETAINED (Ian ruling #1213).
 	// DevLake feeds INTO these internal pages; roadmapdora.go computes the DORA
 	// tiles they render today.
@@ -1638,6 +1804,12 @@ func main() {
 	// same STATUS.md-free discipline as --dora/--trend/--roadmap.
 	if *launchMode {
 		os.Exit(runLaunch(*root, *launchTarget))
+	}
+	// Requirement traceability rollup (sdlc/02): self-contained, read-only,
+	// STATUS.md-free, offline. Emits the per-release ask→work→evidence rollup the
+	// audit-pack brief (sdlc/08) feeds into --export-evidence.
+	if *requirementsRollupMode {
+		os.Exit(runRequirementsRollup(*root, *since, *doraJSON))
 	}
 	// Derived graph export (landscape-followups/06): self-contained, read-only,
 	// STATUS.md-free — same discipline as --gate-scores / --next-up. Emits the

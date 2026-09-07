@@ -33,13 +33,21 @@ Before touching the branch, verify no other session or worker owns it:
 - **Recent pushes**: `gh pr view <N> --json commits --jq '.commits[-1].committedDate'` — a
   push within the last hour or two suggests a live worker.
 - **PR comments**: a recent worker comment ("working the findings", a claim note) = owned.
+  Check the PR's workpad first, if one exists (the one comment carrying
+  `<!-- assay:workpad -->`, authored by the worker identity) — its stamp line names the
+  worktree/sha it was last edited from, which is the fastest read of "who, and how
+  current".
 
 Owned → report and stand down (or take the next PR in discovery mode). Unowned → announce
-adoption with a short PR comment so the next shepherd sees YOUR claim.
+adoption by upserting the PR's workpad: `deskreply <owner/repo> <N> --workpad --body-file
+<file>` so the next shepherd sees YOUR claim, current state and plan in the ONE place —
+never a fresh plain comment for this (`## Notes` is where the hand-off note belongs).
 
 ## 2. Get on the branch, current with main
 
 Work in your **own worktree** (`capability:isolate-workspace`), never the shared checkout:
+
+> Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, and role/repo coverage — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
 
 ```bash
 git fetch origin <branch>:<branch>            # branch may not exist locally yet
@@ -115,6 +123,22 @@ Reproduce the failing job's command locally in your worktree, fix, push unprompt
 touched AND it reproduces on main, or it matches a flake the project already tracks — post that
 evidence on the PR, link the tracked flake, and re-run the failed jobs once. Reproduces
 identically → it is yours. A proven flake still blocks the desk's flip; it only routes the fix.
+
+**The commonest self-serve red is the `changelog` check**, and it is the one red that does NOT
+reproduce locally — it reads the DIFF against the PR base, not your working tree, so a green local
+build tells you nothing about it. It PASSES when the branch adds or updates a `changelog/<slug>.md`
+fragment (`<slug>` = the branch name) carrying at least one bullet, OR when the PR wears the
+`changelog:skip` label; it FAILS when neither is true. The fix is ONE commit adding
+`changelog/<slug>.md` — never an edit to a top-level `CHANGELOG.md`, and never self-applying
+`changelog:skip` (that label is the desk's or a human's, not yours). A branch you have RESUMED owes
+this file whether or not the check has run against it yet.
+
+**Check what the PR actually owes before you write a fragment for it.** A documentation-only or
+Evidence-only PR owes none — a fragment added on top of one is a code changelog entry describing a
+change that is not in the diff — and some repos' changelog checks classify such a PR themselves and go
+green with no label at all. Where the check does NOT classify it and the branch is genuinely
+documentation-only, the move is to ASK the maintainer for `changelog:skip` and say so on the PR. It is
+never a fragment to invent, and never a label to apply yourself.
 
 **Carve-out — when the fix IS the removal of a security control, the red check is NOT yours
 (gate: human).** If the only way to turn a red check green is to delete, disable, or weaken a

@@ -36,6 +36,10 @@ ASSAY_TRUSTED_LOGINS=ada:2001,shared-agent:2002
 ASSAY_TRUSTED_BOT_SLUGS=desk=assay-desk-app:300000001,intake-loop=assay-intake-loop-app:300000002,issue-loop=assay-issue-loop-app:300000003,reviewer=assay-reviewer-app:300000004,verifier=assay-verifier-app:300000005,worker=assay-worker-app:300000006
 ASSAY_ALLOWED_REPOS=example-org/tracker:ci:private,example-org/agents:ci:private,example-org/examples:no-ci:private,example-org/console:ci:private,medici-finance/assay:ci:private,example-org/example-k8s:ci:public,example-org/example-reconciler:ci:private,example-org/org-slides:no-ci:private,example-org/proposals:no-ci:public,example-org/platform:ci:private,example-org/demo-slides:no-ci:private,example-org/assay-slides:no-ci:private,example-org/example-reconciler-slides:no-ci:private
 ASSAY_HUMAN_LOGIN_MAP=alex:ada
+# The forge binding. ForgeFor resolves it from HERE first and falls back to the origin
+# remote's host only when no entry names the repo — so without this line the tests' verdicts
+# would depend on the ambient checkout's remote, which is not a property of the code.
+ASSAY_REPO_FORGES=medici-finance/assay=github,example-org/example-k8s=github,example-org/tracker=github,example-org/agents=github,example-org/console=github
 `
 
 // plantFixtureRoster writes the fixture roster under home. A test that relocates
@@ -80,4 +84,26 @@ func installFixtureRoster() (cleanup func(), err error) {
 		os.RemoveAll(home)
 		deskkit.ReloadConfig()
 	}, nil
+}
+
+// TestMain installs the fixture roster for the WHOLE test binary, the way every
+// sibling command package does.
+//
+// Without it the package's roster only existed inside stub.install, which each test
+// calls as its first STATEMENT — so a helper evaluated in the composite literal that
+// stub.install is called on (`&stub{reviews: approvalAtHead(t, headSHA)}`) ran BEFORE
+// any roster was planted and read whatever the ambient config home happened to hold.
+// On a developer's machine that is a real ~/.config/assay/roster.env and the reviewer
+// role resolves; on a CI runner there is no such file and the same test fails with
+// "the fixture roster does not bind the reviewer role". A test whose verdict depends on
+// the operator's own configuration is not a test, so the roster is installed here,
+// before m.Run, and no test can outrun it.
+func TestMain(m *testing.M) {
+	cleanup, err := installFixtureRoster()
+	if err != nil {
+		panic("cannot install the test-fixture roster: " + err.Error())
+	}
+	code := m.Run()
+	cleanup()
+	os.Exit(code)
 }

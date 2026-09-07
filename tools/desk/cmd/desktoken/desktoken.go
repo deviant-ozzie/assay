@@ -190,6 +190,68 @@ func parseOwner(repo string) string {
 	return repo
 }
 
+// placeholderOwner is the account the shipped topology carries as a placeholder.
+// It is NOT a usable default owner: when --repo is absent the account must be
+// resolved from the configured roster, and if that resolves nothing the mint
+// fails closed NAMING this placeholder rather than silently resolving an
+// installation for it. The old default (owner := placeholderOwner whenever --repo
+// was absent) surfaced in a configured deployment as a bare rc=6 that read like a
+// bad credential, when the real cause was that the owner had never been resolved.
+const placeholderOwner = "example-org"
+
+// configuredOwners returns the sorted, de-duplicated set of account owners across
+// the configured allowed-repo set (ASSAY_ALLOWED_REPOS) — the same
+// write-authorisation roster the other desk verbs resolve the org from. A
+// deployment that names all its repos under one account yields one owner; the
+// unconfigured/placeholder tree yields none.
+func configuredOwners() []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, r := range deskkit.AllowedRepos() {
+		o := parseOwner(r)
+		if o == "" || seen[o] {
+			continue
+		}
+		seen[o] = true
+		out = append(out, o)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// resolveMintOwner determines the account whose App installation the token is
+// minted against.
+//
+//   - --repo given: its owner half, verbatim (unchanged behaviour).
+//   - --repo absent: the owner is resolved from the SAME configured source the
+//     other desk verbs read — the allowed-repo roster (ASSAY_ALLOWED_REPOS).
+//     Exactly one configured owner is used. Zero or several fail CLOSED with a
+//     message that names what to do (exit 6), never a silent mint against the
+//     shipped placeholder that reads back as an auth failure.
+func resolveMintOwner(repo string) (string, error) {
+	if strings.TrimSpace(repo) != "" {
+		return parseOwner(repo), nil
+	}
+	owners := configuredOwners()
+	switch len(owners) {
+	case 1:
+		return owners[0], nil
+	case 0:
+		return "", deskkit.Unverifiable(fmt.Sprintf(
+			"COULD-NOT-CHECK: no --repo was given and the allowed-repo roster (%s) names no account, so "+
+				"the owner cannot be resolved. The mint would otherwise fall back to the shipped placeholder "+
+				"%q, which is not a real installation — a mint against it fails as if the credential were bad "+
+				"when the real cause is that no owner is configured. Pass --repo <owner>/<name>, or set %s in %s.",
+			deskkit.EnvAllowedRepos, placeholderOwner, deskkit.EnvAllowedRepos, deskkit.ConfigHomePath()), nil)
+	default:
+		return "", deskkit.Unverifiable(fmt.Sprintf(
+			"COULD-NOT-CHECK: no --repo was given and the allowed-repo roster names more than one account "+
+				"(%s), so the owner is ambiguous. An installation token is per account and this process will "+
+				"not guess which one — pass --repo <owner>/<name> to name the account.",
+			strings.Join(owners, ", ")), nil)
+	}
+}
+
 // --- key parsing ----------------------------------------------------------------
 
 // parsePrivateKey tries PKCS1 then PKCS8 decoding of a PEM-encoded RSA key.
@@ -408,6 +470,40 @@ func writePerms(tokenPath string, perms map[string]string) {
 	_ = os.WriteFile(permsPath(tokenPath), []byte(b.String()), 0o600)
 }
 
+// privateKeyModeOK reports whether a private-key file's mode keeps the key away
+// from OTHER principals. The rule is expressed as bits, not an exact mode:
+//
+//   - reject if readable by others (mode & 0o004), or writable by group or
+//     others (mode & 0o022);
+//   - allow otherwise.
+//
+// So owner-only 0600/0400 AND group-read 0440/0640 pass; 0644, 0660, 0666,
+// 0604 and 0620 fail. Group-read is admitted deliberately: a Kubernetes
+// Secret volume is materialised by the kubelet root-owned, and a pod running as
+// a non-root user reads it through securityContext.fsGroup — group-read — so
+// the key in that pod is necessarily 0440 (root:<fsGroup>). An exact-0600 rule
+// is unsatisfiable there (0600/0400 would be owner-root-only and unreadable by
+// the pod), and the mint would fail closed on every tick. Group-read does not
+// widen exposure beyond the pod's own group; other-read and any group/other
+// write are still refused. This checker is for the App PRIVATE KEY only; the
+// token cache and the GitLab PAT custody file are written by this tool at 0600
+// and keep their exact-mode checks.
+func privateKeyModeOK(mode os.FileMode) bool {
+	perm := mode.Perm()
+	return perm&0o004 == 0 && perm&0o022 == 0
+}
+
+// checkPrivateKeyMode is the fail-closed wrapper over privateKeyModeOK: it
+// returns the exit-6 refusal naming the rule and the observed mode, or nil.
+func checkPrivateKeyMode(pemPath string, mode os.FileMode) error {
+	if privateKeyModeOK(mode) {
+		return nil
+	}
+	return deskkit.Unverifiable(
+		fmt.Sprintf("private key at %s has permissions %04o; must not be readable by others or writable by group/others "+
+			"(0600, 0400, 0440 and 0640 are accepted) — run: chmod 600 %s", pemPath, mode.Perm(), pemPath), nil)
+}
+
 // --- main entry point -----------------------------------------------------------
 
 // run is the CLI entry point. It returns an exit code.
@@ -435,6 +531,17 @@ func run(args []string) int {
 
 	// Running from source (go run / unstamped) is a drift risk — say so loudly.
 	deskkit.WarnIfUnpinned(os.Stderr)
+
+	// `coverage` is a distinct read-only verb (list the repos a role's App
+	// installations can see). No role is named "coverage", so the dispatch is
+	// unambiguous.
+	if args[0] == "coverage" {
+		cerr := cmdCoverage(args[1:])
+		if cerr != nil {
+			fmt.Fprintln(os.Stderr, cerr.Error())
+		}
+		return deskkit.ExitCodeOf(cerr)
+	}
 
 	err := cmdToken(args)
 	if err != nil {
@@ -498,8 +605,9 @@ func cmdToken(args []string) (err error) {
 
 	// Resolve install ID: env override takes priority; otherwise resolve at
 	// runtime by signing a JWT and querying GET /app/installations, matching
-	// account.login against the repo owner. When --repo is absent we default
-	// the owner to "example-org".
+	// account.login against the repo owner. When --repo is absent the owner is
+	// resolved from the configured roster (see resolveMintOwner) rather than
+	// defaulting to the shipped placeholder account.
 	// This is attribution (which App name appears), not authorization (which
 	// session is permitted to act as the role) — the caller holds the key and
 	// controls the env, so every key is readable by any session of the same OS
@@ -511,11 +619,13 @@ func cmdToken(args []string) (err error) {
 		installID = override
 	} else {
 		// Resolve install ID at runtime: build JWT, query GitHub
-		// /app/installations, match account.login against repo owner.
-		// Default owner to example-org when --repo is absent.
-		owner := "example-org"
-		if *repo != "" {
-			owner = parseOwner(*repo)
+		// /app/installations, match account.login against repo owner. With --repo
+		// absent the owner comes from the configured allowed-repo roster; an
+		// unresolvable owner fails closed here rather than minting against the
+		// placeholder.
+		owner, oerr := resolveMintOwner(*repo)
+		if oerr != nil {
+			return oerr
 		}
 
 		// Must read PEM, sign JWT before we know the install ID.
@@ -531,9 +641,8 @@ func cmdToken(args []string) (err error) {
 			}
 			return deskkit.Unverifiable("cannot stat private key at "+pemPath, perr)
 		}
-		if fi.Mode().Perm() != 0o600 {
-			return deskkit.Unverifiable(
-				fmt.Sprintf("private key at %s has permissions %o; must be 0600", pemPath, fi.Mode().Perm()), nil)
+		if merr := checkPrivateKeyMode(pemPath, fi.Mode()); merr != nil {
+			return merr
 		}
 
 		keyPEM, rerr := os.ReadFile(pemPath)
@@ -615,7 +724,7 @@ func cmdToken(args []string) (err error) {
 	if prebuiltJWT != "" {
 		jwt = prebuiltJWT
 	} else {
-		// Read the App private key. Check file permissions — must be 0600.
+		// Read the App private key. Check file permissions — see checkPrivateKeyMode.
 		// The key is READ here, so a deferred not-found from resolvePEMPath is
 		// raised here — naming every directory searched (#794).
 		if pemErr != nil {
@@ -628,9 +737,8 @@ func cmdToken(args []string) (err error) {
 			}
 			return deskkit.Unverifiable("cannot stat private key at "+pemPath, perr)
 		}
-		if fi.Mode().Perm() != 0o600 {
-			return deskkit.Unverifiable(
-				fmt.Sprintf("private key at %s has permissions %o; must be 0600", pemPath, fi.Mode().Perm()), nil)
+		if merr := checkPrivateKeyMode(pemPath, fi.Mode()); merr != nil {
+			return merr
 		}
 
 		keyPEM, rerr := os.ReadFile(pemPath)

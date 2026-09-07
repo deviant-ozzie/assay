@@ -58,7 +58,9 @@ filings stamp.
 ## Dual-track PRs — hold until both tracks report, dedupe the union, file once
 
 A risk-classed PR gets TWO independently-dispatched reviewers over the same diff (the correctness
-reviewer plus a separate `/security-review` agent). Both can notice the same out-of-scope item, and
+reviewer plus a separate `/security-review` agent), **dispatched in the SAME turn and running
+concurrently — this hold binds the desk's FILING only; the two VERDICTS never wait for each other,
+and the ready-flip reads both at head on its own.** Both can notice the same out-of-scope item, and
 if each filed it the moment it found it, a `deskfile check` alone still loses the race: track B's
 search can run and come back clean *before* track A's `deskfile new` has landed. Filings 44 seconds
 apart, and 17 minutes apart, are both on record. The fix is desk-side, not reviewer-side:
@@ -93,15 +95,17 @@ is worth its own issue, or its own comment on the existing one.
 ## File-and-exit, never block — the pod-loop contract (the pod-loop contract)
 
 The orthogonal half of the autonomous-drive rule: *file at discovery, don't ask permission* is one
-half; **never hold the run open after you have filed** is the other. When the review loop hits a
-decision fork, a human gate, or an external blocker it cannot resolve, it **files (or confirms
-already-filed) the escalation and exits the run** — a pod CronJob run terminates; a live session
+half; **never hold the run open after you have filed** is the other — but the reversibility test runs
+FIRST. When the review loop hits a decision fork, a human gate, or an external blocker it cannot
+resolve, a REVERSIBLE fork is acted on at its best-guess default and the filing NAMES that default
+rather than asking (the merge gate catches a wrong default); only a genuinely one-way fork makes it
+**file (or confirm already-filed) the escalation and exit the run** — a pod CronJob run terminates; a live session
 window yields to the next PR in the queue. It never blocks and never waits in-line for the answer;
 resumption is event-driven — a fresh run picks the PR up when the answer or the label lands, and
 until then the run does not hold on it. A documented wait-state that is merely SURFACED (a
 `WAIT-CI` PR reported and moved past, a MERGE-NOW awaiting the human's merge) is already
 file-and-exit-shaped: keep it, and note explicitly that the run does not hold on it either. Route a
-genuine decision FORK to a `needs-decision` issue in the self-contained shape (Situation + 2–4
+genuine ONE-WAY decision FORK to a `needs-decision` issue in the self-contained shape (Situation + 2–4
 Options with pros/cons + what-happens-on-each-answer + links, answerable without opening the repo);
 lighter input needs use `question` / `help wanted` — a bare label is not filing. **Why:** a loop
 that blocks in-run is undebuggable in a pod — its blocked state must be an at-rest FILED issue

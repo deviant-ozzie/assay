@@ -68,11 +68,13 @@ func cmdEdit(args []string) (err error) {
 	bodyFile := fs.String("body-file", "", "path to a file holding the replacement PR body (required)")
 	title := fs.String("title", "", "replacement PR title (optional; the title is left alone when empty)")
 	root := fs.String("root", ".", "repo root the Brief: trailer resolves against (docs/streams under it)")
-	asApp := fs.Bool("as-app", true, "authenticate as the worker App via desktoken worker (default on); --as-app=false for example-org fallback")
+	asApp := fs.Bool("as-app", true, "authenticate as this session's App role via desktoken (worker by default; the verifier App under DESK_LOOP=verify-desk, etc.); --as-app=false for example-org fallback")
 	scanOverride := fs.String(deskkit.ScanOverrideFlag, "", "override a secret-scan refusal, stating why; writes an audit row (tool, surface digest, reason, identity)")
+	explain := fs.Bool("explain", false, "on a secret-scan refusal, also print a scan-explain line naming the rule id and line number (never the offending span)")
 	if perr := fs.Parse(args); perr != nil {
 		return deskkit.Refused("refused: bad flags: " + perr.Error())
 	}
+	defer func() { explainScanRefusal(*explain, err) }()
 	if fs.NArg() != 0 {
 		return deskkit.Refused("refused: edit takes no positional arguments — it edits the OPEN PR of the branch this worktree is on")
 	}

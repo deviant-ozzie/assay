@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 
@@ -76,14 +75,14 @@ func TestAuditLockIsHeldAcrossTheRemoteCall(t *testing.T) {
 			return
 		}
 		defer fh.Close()
-		if err := syscall.Flock(int(fh.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err == nil {
+		if err := deskkit.TryLockExclusive(fh); err == nil {
 			probedFree = true
-			_ = syscall.Flock(int(fh.Fd()), syscall.LOCK_UN)
+			_ = deskkit.UnlockFile(fh)
 		}
 	}
 
 	evidencePath := writeRepoFile(t, "docs/brief.md", "# Brief\n\n## Evidence\n| 1 | x | y |\n")
-	f.setFile(evidencePath, "old", "old-sha")
+	f.setFile(evidencePath, "old")
 
 	if code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath}); code != deskkit.ExitOK {
 		t.Fatalf("exit = %d, want 0", code)
@@ -142,8 +141,8 @@ func TestConcurrentInvocationsCannotBothSpendTheLastWrite(t *testing.T) {
 
 	pathA := writeRepoFile(t, "docs/brief-a.md", "# A\n\n## Evidence\n| 1 | a | a |\n")
 	pathB := writeRepoFile(t, "docs/brief-b.md", "# B\n\n## Evidence\n| 1 | b | b |\n")
-	f.setFile(pathA, "old-a", "sha-a")
-	f.setFile(pathB, "old-b", "sha-b")
+	f.setFile(pathA, "old-a")
+	f.setFile(pathB, "old-b")
 
 	aDone := make(chan int, 1)
 	go func() {
@@ -225,7 +224,7 @@ func TestLockFailureStillWritesOneAuditLine(t *testing.T) {
 
 	before := len(auditEntries(t))
 	evidencePath := writeRepoFile(t, "docs/brief.md", "# Brief\n\n## Evidence\n| 1 | x | y |\n")
-	f.setFile(evidencePath, "old", "old-sha")
+	f.setFile(evidencePath, "old")
 
 	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath})
 	if code != deskkit.ExitUnverifiable {
@@ -268,11 +267,11 @@ func TestContendedLockTimesOutUnverifiable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open lock: %v", err)
 	}
-	if err := syscall.Flock(int(holder.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+	if err := deskkit.TryLockExclusive(holder); err != nil {
 		t.Fatalf("hold lock: %v", err)
 	}
 	t.Cleanup(func() {
-		_ = syscall.Flock(int(holder.Fd()), syscall.LOCK_UN)
+		_ = deskkit.UnlockFile(holder)
 		_ = holder.Close()
 	})
 
@@ -283,7 +282,7 @@ func TestContendedLockTimesOutUnverifiable(t *testing.T) {
 
 	before := len(auditEntries(t))
 	evidencePath := writeRepoFile(t, "docs/brief.md", "# Brief\n\n## Evidence\n| 1 | x | y |\n")
-	f.setFile(evidencePath, "old", "old-sha")
+	f.setFile(evidencePath, "old")
 
 	done := make(chan int, 1)
 	start := time.Now()

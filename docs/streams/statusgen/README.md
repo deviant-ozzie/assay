@@ -30,12 +30,12 @@ findings-register state machine.
 | 05 | [drives phase 3 — anti-starvation floors + critical tier](brief-05-drives-phase3-floors-critical-tier.md) | 1 | L | implemented | — | — |
 | 06 | [findings register — corroborated state machine](brief-06-findings-register-state-machine.md) | 1 | L | implemented | — | — |
 | 07 | [new brief-flow metrics](brief-07-brief-flow-metrics.md) | 1 | L | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #306 @ 4f37b243efb70e1b1d3e726bc4019967ad64ad99) |
-| 08 | [composite AssayScore computation](brief-08-assayscore-computation.md) | 2 | M | todo | — | — |
+| 08 | [composite AssayScore computation](brief-08-assayscore-computation.md) | 2 | M | done | 2026-09-04 opus-4.8[1m]-verifier | 2026-09-05 assay-reviewer-app[bot] (approved PR #403 @ 8c10c90a0ed62049f45f647e7dad20aedcb212e1) |
 | 09 | [opt-in telemetry — anonymized fleet-drift corpus (off by default)](brief-09-optin-telemetry.md) | 1 | M | implemented | — | — |
 | 10 | [graph export (`--graph` DOT + JSONL)](brief-10-graph-export.md) | 1 | M | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #318 @ 6ab8de53a40c1a4f71fa6c0a0ddccb4b27a000c8) |
 | 11 | [DORA/insights hybrid — DevLake commodity split](brief-11-devlake-hybrid-metrics-split.md) | 1 | L | implemented | — | — |
-| 12 | [`homed-in: <owner/repo>` — exclude a re-homed brief from THIS board's Next-up, keep its tracking row, carry the target repo](brief-12-homed-in-field.md) | 1 | M | implemented | — | — |
-| 13 | [cadenced roadmap artifacts (`--cadence weekly/monthly`)](brief-13-cadenced-roadmap-artifacts.md) | 1 | M | implemented | — | — |
+| 12 | [`homed-in: <owner/repo>` — exclude a re-homed brief from THIS board's Next-up, keep its tracking row, carry the target repo](brief-12-homed-in-field.md) | 1 | M | done | 2026-09-04 opus-4.8[1m]-verifier | 2026-09-04 assay-reviewer-app[bot] (approved PR #404 @ 894d5e5f73ce417aa49c55134d10db3dc3675cfb) |
+| 13 | [cadenced roadmap artifacts (`--cadence weekly/monthly`)](brief-13-cadenced-roadmap-artifacts.md) | 1 | M | done | 2026-09-04 opus-4.8[1m]-verifier | 2026-09-04 assay-reviewer-app[bot] (approved PR #409 @ 3b022c17ea158700be8cfab679d1719c75afb7a4) |
 
 ## Critical path
 statusgen/02 (issue metrics) → statusgen/03 (self-improvement metric). The

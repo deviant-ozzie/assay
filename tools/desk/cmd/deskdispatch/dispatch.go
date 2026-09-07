@@ -147,11 +147,27 @@ func dispatch(o dispatchOpts) error {
 		for i, s := range dispatchSteps {
 			fmt.Printf("  %d %s\n", i+1, s)
 		}
+		// Step 2 records the run key worktree-locally on a real dispatch; name it here so an
+		// operator can see which STOP.run.<key> would stop this run before launching it.
+		fmt.Printf("  run key (recorded at step %s as assay.runKey): %s\n", stepWorktreeCreate, plan.claimKey)
+		if line, herr := deskkit.HookDryRunLine(deskkit.HookBeforeRun); herr != nil {
+			return herr
+		} else {
+			fmt.Println("  " + line)
+		}
 		prompt, perr := assemblePrompt(o, plan, "")
 		if perr != nil {
 			return perr
 		}
 		return emitPrompt(o, prompt)
+	}
+
+	// PHANTOM CHECK — before the claim (phantom.go). A fresh worker dispatch whose brief already
+	// has an OPEN or MERGED PR is refused here, keyed on that PR's `Brief:` trailer rather than a
+	// derived branch name, so the branch-naming mismatch that let phantom rows through is closed. It
+	// wedges nothing (no claim yet) and is a no-op for a review/verifier dispatch or a --pr resume.
+	if err := phantomCheck(o, repo); err != nil {
+		return err
 	}
 
 	// Advisory write-scope overlap echo, BEFORE the claim — a coordination hint
@@ -174,10 +190,22 @@ func dispatch(o dispatchOpts) error {
 	// verb predicted.
 	wt := runCmd(o.root, "deskwt", "add", wtName, "--branch", branch, "--base", "refs/remotes/origin/main")
 	if wt.err != nil {
-		return deskkit.Unverifiable(fmt.Sprintf(
-			"step %s: `deskwt add %s` failed in %s (%s). The claim is HELD — release it, or fix the tree "+
-				"and re-run; do not launch an agent with no worktree of its own.",
-			stepWorktreeCreate, wtName, o.root, firstLine(wt.stderr)), wt.err)
+		// deskwt's OWN message, whole and verbatim — it is the one that names the cause
+		// (which branch, which worktree holds it, what to do). Reducing it to the first
+		// stderr line reduced it to the config echo, and an operator who cannot see the
+		// cause re-runs the claim machinery instead of clearing the stray ref.
+		msg := fmt.Sprintf(
+			"step %s: `deskwt add %s` failed in %s. The claim is HELD — release it, or fix the tree "+
+				"and re-run; do not launch an agent with no worktree of its own. deskwt said:\n%s",
+			stepWorktreeCreate, wtName, o.root, toolMessage(wt.stderr))
+		// deskwt's exit code passes THROUGH: a refusal (5) is a decision it made — the branch
+		// is held by a live worktree, or carries unpushed work — and flattening a decision
+		// into "could not be established" tells the operator to retry something that will
+		// never succeed on its own.
+		if exitCodeOf(wt.err) == deskkit.ExitRefused {
+			return deskkit.Refused(msg)
+		}
+		return deskkit.Unverifiable(msg, wt.err)
 	}
 	home := firstLine(wt.stdout)
 	if home == "" || home == "(no output)" || !strings.HasPrefix(home, "/") {
@@ -187,6 +215,43 @@ func dispatch(o dispatchOpts) error {
 				"dispatch it must not make.", stepWorktreeCreate, wtName, wt.stdout), nil)
 	}
 	o.say("%s OK: %s on %s", stepWorktreeCreate, home, branch)
+
+	// Record the run key worktree-locally (assay.runKey) so the per-run stop layer
+	// (deskkit.Guard's STOP.run.<key> check) resolves it from cwd with
+	// NO agent cooperation: every desk verb the worker runs next reads the key from its own
+	// worktree and refuses if that run has been stopped. `git config --worktree` needs the
+	// worktreeConfig extension on to write into a LINKED worktree's own config, so enable it
+	// first (a benign, idempotent repo setting). This is Layer A of the two-layer stop; a
+	// failure here degrades to Layer B (the desk window's cadence sweep) and is REPORTED,
+	// never silent — but it never fails the dispatch, which is already claimed and homed.
+	if ext := runCmd(home, "git", "config", "extensions.worktreeConfig", "true"); ext.err == nil {
+		if rk := runCmd(home, "git", "config", "--worktree", "assay.runKey", plan.claimKey); rk.err == nil {
+			o.say("%s OK: recorded run key %s (assay.runKey) in %s", stepWorktreeCreate, plan.claimKey, home)
+		} else {
+			o.say("%s WARNING: could not record assay.runKey=%s in %s (%s) — the per-run stop's "+
+				"cooperative layer is off for this run; the desk-window sweep still covers it",
+				stepWorktreeCreate, plan.claimKey, home, firstLine(rk.stderr))
+		}
+	} else {
+		o.say("%s WARNING: could not enable extensions.worktreeConfig in %s (%s) — the per-run "+
+			"stop's cooperative layer is off for this run; the desk-window sweep still covers it",
+			stepWorktreeCreate, home, firstLine(ext.stderr))
+	}
+
+	// before_run — runs after the worktree is prepared and BEFORE the prompt is emitted (the
+	// agent's "run"). FATAL failure class: a failure ABORTS the attempt — no prompt is
+	// emitted — and, because this is the one lifecycle point AFTER the durable claim, the
+	// claim is RELEASED so a corrected re-run is not wedged behind a dispatcher that never
+	// dispatched. The hook is the checked form of the KUBECONFIG=/dev/null envelope every
+	// agent is otherwise asked to remember.
+	if _, herr := deskkit.RunHook(deskkit.HookBeforeRun, deskkit.HookEnv{
+		RunKey: plan.claimKey, Worktree: home, Repo: repo, Role: o.kit,
+	}); herr != nil {
+		released := releaseClaim(o, plan.claimScript, plan.claimKey, repo)
+		return deskkit.Unverifiable(fmt.Sprintf(
+			"step before_run: the before_run hook failed, so no prompt is emitted. The claim was %s. Hook: %v",
+			released, herr), herr)
+	}
 
 	prompt, perr := assemblePrompt(o, plan, home)
 	if perr != nil {
@@ -484,6 +549,21 @@ func stepClaim(o dispatchOpts, repo, script, claimKey string) error {
 	}
 }
 
+// releaseClaim releases the durable claim via the consumer claim script's own `release`
+// verb — the same tool the acquire went through, never a re-implementation. It is used when
+// a lifecycle failure AFTER the claim (a failed before_run hook) must not wedge the item
+// behind a dispatcher that never dispatched. It returns a human phrase for the report; a
+// release that itself fails is surfaced in that phrase rather than swallowed, because a
+// claim this verb believed it released but did not is worse than one it never touched.
+func releaseClaim(o dispatchOpts, script, claimKey, repo string) string {
+	r := runCmd(o.root, script, "release", claimKey, "--repo", repo)
+	if r.err != nil {
+		return "NOT released (release failed: " + firstLine(refusalDetail(r)) + ") — release it by hand: " +
+			script + " release " + claimKey + " --repo " + repo
+	}
+	return "released"
+}
+
 // refusalDetail picks the claim tool's refusal text: its errors go to stderr, its DEDUP
 // log lines to stdout, so stderr is preferred and stdout is the fallback.
 func refusalDetail(r runResult) string {
@@ -624,6 +704,77 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 		return "PENDING: apply " + strings.Join(labels, " + ") +
 			" under the DISPATCHER's identity the instant the draft PR opens", nil
 	}
+	// The identity comes FIRST, before any label is written. The role is the one deskkit
+	// declares as the dispatcher — the same declaration the floor's reader resolves the
+	// accepted applier login from — so the identity a stamp is WRITTEN under and the
+	// identity it is VERIFIED against cannot drift apart. Writing the labels under the
+	// calling session's own credential is what made a correctly dispatched strong-tier PR
+	// read as a forged self-report and refuse every verdict and ready-flip on it.
+	//
+	// A mint failure is UNVERIFIABLE and stops the step: the alternative — stamping under
+	// the ambient credential — produces an attestation the floor must refuse, and a PR
+	// carrying an untrusted stamp is in a WORSE state than an unstamped one (absent reads
+	// UNKNOWN and proceeds with a NOTICE). So no stamp at all is the safe failure here.
+	tok, tokPath, terr := mintTokenFn(deskkit.DispatcherRole, repo)
+	if terr != nil {
+		return "", deskkit.Unverifiable(fmt.Sprintf(
+			"step %s: the %s App installation token for %s could not be minted or read (%s): %v — so the "+
+				"identity the stamp would be applied under cannot be established. NO label was applied: a "+
+				"stamp written under this session's own credential reads as a non-dispatcher stamp and "+
+				"refuses every authority-bearing write on the PR, which is worse than leaving it unstamped.",
+			stepModelStamp, deskkit.DispatcherRole, deskkit.OwnerOf(repo), tokenPathForMessage(tokPath), terr), terr)
+	}
+	dispatcherToken = tok
+
+	// RE-STAMP, NOT ADD-ON-TOP. Labels are a SET, so `--add-label` over a label the PR
+	// already carries is a NO-OP — and a stamp the floor cannot read is exactly the state it
+	// refuses. Re-running this step therefore changed nothing on the PRs that needed it most.
+	// A GitHub timeline is APPEND-ONLY, so the only repair the forge offers is to REMOVE the
+	// offending labels and re-apply the intended pair under the dispatcher; that is what the
+	// floor's reader resolves (the actor of the last standing `labeled` event), so it is what
+	// this step must do. The set to remove comes from deskkit.ReStampRemovals(labels): every
+	// present dispatched-* label that is not part of the pair being applied (a conflicting,
+	// stale, or malformed stamp — INCLUDING one an earlier run of the dispatcher itself left),
+	// plus any half of the pair whose standing application is foreign. Clearing only the
+	// foreign labels (the old ForeignStampLabels set) left a dispatcher-applied conflicting
+	// label standing, so the re-dispatch reported OK while the floor kept refusing — the
+	// present-but-unreadable deadlock this recovery exists to break. Reader and writer project
+	// the standing-applier resolution from one place, so they cannot disagree about it.
+	//
+	// The reads are UNVERIFIABLE on failure rather than best-effort: proceeding blind would
+	// silently re-create the no-op — the labels would be "applied" and the PR would still
+	// carry the foreign stamp, which is the failure this whole step exists to prevent.
+	labelRead := runCmd("", "gh", "api", "--paginate",
+		fmt.Sprintf("repos/%s/issues/%d/labels", repo, o.pr), "--jq", ".[].name")
+	if labelRead.err != nil {
+		return "", deskkit.Unverifiable(fmt.Sprintf(
+			"step %s: could not read the labels currently on %s#%d (%s) — whether this PR already carries "+
+				"a foreign stamp is unknown, and adding a label over one is a no-op, so stamping blind "+
+				"would report success on a PR that stays refused.",
+			stepModelStamp, repo, o.pr, firstLine(labelRead.stderr)), labelRead.err)
+	}
+	tlRead := runCmd("", "gh", "api", "--paginate",
+		fmt.Sprintf("repos/%s/issues/%d/timeline", repo, o.pr),
+		"--jq", `.[]|select(.event=="labeled" or .event=="unlabeled")|[.event,(.label.name//""),(.actor.login//"")]|@tsv`)
+	if tlRead.err != nil {
+		return "", deskkit.Unverifiable(fmt.Sprintf(
+			"step %s: could not read the label timeline of %s#%d (%s) — WHO applied the stamp this PR "+
+				"carries cannot be established, so a foreign application could not be replaced.",
+			stepModelStamp, repo, o.pr, firstLine(tlRead.stderr)), tlRead.err)
+	}
+	stale := deskkit.ReStampRemovals(deskkit.StampTimeline{
+		Present: parseLabelNames(labelRead.stdout),
+		Events:  parseLabelEventLines(tlRead.stdout),
+	}, labels, deskkit.IsDispatcherLogin)
+	for _, l := range stale {
+		if r := runCmd("", "gh", "pr", "edit", fmt.Sprint(o.pr), "-R", repo, "--remove-label", l); r.err != nil {
+			return "", deskkit.Unverifiable(fmt.Sprintf(
+				"step %s: could not remove the stamp label %s from %s#%d (%s) — re-applying the intended "+
+					"stamp on top would be a no-op, leaving the PR carrying labels the floor refuses.",
+				stepModelStamp, l, repo, o.pr, firstLine(r.stderr)), r.err)
+		}
+	}
+
 	for _, l := range labels {
 		// Label provisioning is idempotent and an already-exists error is the success
 		// case: two dispatchers stamping in parallel must both end up with the label
@@ -636,7 +787,68 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 				stepModelStamp, l, repo, o.pr, firstLine(r.stderr)), r.err)
 		}
 	}
-	return "OK: applied " + strings.Join(labels, " + "), nil
+	// BOTH events are reported. A silent removal is a label disappearing from a PR with no
+	// record of why; the removal is half the repair and belongs in the step report next to
+	// the application it made possible.
+	restamped := ""
+	if len(stale) > 0 {
+		restamped = fmt.Sprintf(" (RE-STAMPED: removed %s — a conflicting, stale, or foreign-applied "+
+			"stamp the floor cannot read — before applying the intended stamp, since adding over a "+
+			"present label is a no-op)", strings.Join(stale, " + "))
+	}
+	return fmt.Sprintf("OK: applied %s as the %s App, the identity the capability floor accepts (%s)%s",
+		strings.Join(labels, " + "), deskkit.DispatcherRole, tokenPathForMessage(tokPath), restamped), nil
+}
+
+// parseLabelNames reads the `gh api --jq '.[].name'` output of the PR's labels — one name
+// per line, blank lines ignored. An EMPTY output is a PR with no labels, which is a real
+// answer, not a failure: the caller has already treated a failed READ as unverifiable.
+func parseLabelNames(out string) []string {
+	var names []string
+	for _, ln := range strings.Split(out, "\n") {
+		if s := strings.TrimSpace(ln); s != "" {
+			names = append(names, s)
+		}
+	}
+	return names
+}
+
+// parseLabelEventLines reads the TSV label-event stream (`event\tlabel\tactor` per line) the
+// timeline --jq emits, IN ORDER — the order is load-bearing, because the standing applier of
+// a label is decided by which of its events came last. A line missing a field is skipped
+// rather than guessed: a half-read event would attribute a label to the wrong login, and the
+// reader treats a label it cannot attribute as could-not-check, which is the safe answer.
+func parseLabelEventLines(out string) []deskkit.LabelEvent {
+	var events []deskkit.LabelEvent
+	for _, ln := range strings.Split(out, "\n") {
+		if strings.TrimSpace(ln) == "" {
+			continue
+		}
+		f := strings.Split(ln, "\t")
+		if len(f) < 3 || strings.TrimSpace(f[1]) == "" {
+			continue
+		}
+		kind := strings.TrimSpace(f[0])
+		if kind != "labeled" && kind != "unlabeled" {
+			continue
+		}
+		events = append(events, deskkit.LabelEvent{
+			Name:      strings.TrimSpace(f[1]),
+			AppliedBy: strings.TrimSpace(f[2]),
+			Removed:   kind == "unlabeled",
+		})
+	}
+	return events
+}
+
+// tokenPathForMessage renders the token file path for a step report or refusal. The PATH is
+// what an operator needs and is safe to print; the token VALUE never is, and never reaches
+// a message from anywhere in this verb.
+func tokenPathForMessage(path string) string {
+	if strings.TrimSpace(path) == "" {
+		return "the minter named no token path"
+	}
+	return "token file " + path
 }
 
 // validTier checks the tier against the dispatch-tier vocabulary the stamp reader owns,

@@ -43,10 +43,13 @@ migration deskpr update tells you to perform. Because a body edit moves no head 
 edit also posts one short comment naming what changed, so a head-keyed review monitor
 has an event to see.
 
-By default, --as-app is true: gh calls authenticate as
-the worker App via desktoken worker. Pass --as-app=false for the example-org
-fallback (transition period). The branch push (committed code) is the worker's git
-authorship; the PR is filed under the worker App identity.
+By default, --as-app is true: gh calls authenticate as this session's App role via
+desktoken, resolved from the loop identity ($DESK_LOOP). That is the worker App by
+default, and the VERIFIER App under DESK_LOOP=verify-desk — so an Evidence PR is filed
+under the same App that authored its branch commits, not misattributed to the worker
+(#396). Pass --as-app=false for the example-org fallback (transition period). When no
+loop carries an App role the worker App is the default. The branch push (committed
+code) carries the role App's git authorship; the PR is filed under that same App.
 
 PUBLIC-REPO SELF-CONTAINMENT (#203). When the target repo is not known-private, the
 PR body and title are scanned for spans that only resolve inside the authoring house.
@@ -60,14 +63,15 @@ than restating them.
     * an owner/name slug, with or without #N, naming a repo the roster marks PRIVATE
     * alias#N where the alias resolves to such a repo
     * a withheld register identifier (a stream slug, or a <slug>/<NN> brief id) from
-      ASSAY_WITHHELD_IDENTIFIERS
+      ASSAY_WITHHELD_IDENTIFIERS, read from roster.env or from the environment
 
   NOTICE on stderr, never a refusal — the check could not decide:
     * a bare #N above a number known to exist here (probably another repo's)
     * a bare #N with no reference number available: not checked at all
     * a word that is a PRIVATE repo's short name, 4+ characters (a shorter alias is
       ordinary English and is not noticed at all; its full slug still REFUSES)
-    * ASSAY_WITHHELD_IDENTIFIERS unset: that category was not checked
+    * ASSAY_WITHHELD_IDENTIFIERS not configured in roster.env or the environment:
+      that category was not checked
 
 A refusal takes the same audited --force-scan-override as any other scan refusal —
 there is no second bypass and no flag that turns the check off. A known-private target

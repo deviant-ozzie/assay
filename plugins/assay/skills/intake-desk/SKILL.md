@@ -11,6 +11,8 @@ description: Run the intake-desk — the generic front door of the process desk 
 > bindings, and its own escalation labels. Those pieces are project config, not part of this
 > portable core.
 
+> Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, and role/repo coverage — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
+
 The **intake-desk** is the generic front door of the process-desk pipeline — the first of the four
 desks (`intake-desk → worker-desk → pr-review-desk → verify-desk`). Where pr-review-desk watches
 work *leaving* the system (PRs → ready), this desk watches work *arriving* from **any** source:
@@ -40,7 +42,7 @@ tracked exit per item and fails the pass otherwise.
   issues and merges. Both are always the human's.
 
 Run this in a **dedicated window** so its per-minute monitor churn does not fragment the coordinator
-desk (`the-desk`). **Only this window runs the inbound monitor** — a second monitor double-files
+desk (`the-desk`). **Only this window runs the inbound watcher (`capability:durable-monitor`)** — a second double-files
 placeholders and double-triages. Role window, no persona (Bob belongs to `the-desk` only); the
 register/evidence discipline of `the-desk` applies (read it if not already booted).
 
@@ -200,7 +202,7 @@ so the scan-carrier flow above stands until R-7 signs and the cutover lands (sca
 intake-desk"*). The cut is not *who owns issues* — it is **who told you to do this, a monitor or a
 human?**
 
-- **Monitor-fired → THIS desk owns it, exclusively**: routing comments, decision-consumption and
+- **`capability:durable-monitor`-fired → THIS desk owns it, exclusively**: routing comments, decision-consumption and
   recording, relabeling, triage, duplicate-marking, small inline pipeline-unblock fixes. The
   coordinator (`the-desk`) does not fire on inbound GitHub **issue or comment** events. (Its
   PR-queue watch — filing `review-request` issues on new/updated heads — is a different surface and
@@ -235,7 +237,10 @@ issues landed three days later. That is why the two rules sit together.
 3. **AWAIT / unblock.** A placeholder whose worker parked a question on the issue; a new human
    comment unblocks it and the worker resumes on its own PR. Keep the parked set visible — they are
    WAITING-ON-INPUT, not orphans for the fanout sweep.
-4. **needs-decision.** An issue or brief that hits a human gate. File (or confirm) a
+4. **needs-decision.** An issue or brief that hits a human gate — but the reversibility test runs
+   first: a REVERSIBLE fork is scoped on its best-guess default and rides Next-up NOW (the merge gate
+   catches a wrong default), and its `needs-decision` issue is a NOTIFICATION naming the default, not
+   a park; only a genuinely one-way gate parks the item. File (or confirm) a
    `needs-decision` issue per the **brief-06 template**: self-contained (Situation / Options 2–4
    with pros-cons at the mm/12 trade-off bar / What-happens-on-each-answer / Links). The decider is
    the human, and only a verified human account is honored. This is the SINGLE decision queue
@@ -310,11 +315,14 @@ unaffected, since both layouts parse.
    - **`scoped → <stream>`** — becomes a brief. **Tier gate: triage only QUEUES authoring.** Brief
      authoring is design-tier work (author-brief model-tier gate); a cheap-tier triage session
      **never authors inline** — it marks the entry and the strong-tier author picks it up. If *this*
-     window is strong-tier and human:<name> wants it, author then; otherwise queue.
+     window is strong-tier, author NOW — a brief is a draft PR, the yes-case of the reversibility test;
+     notify ("proceeded, filed as `<repo>#<N>`"). Otherwise queue.
    - **`scoped → issue #NN`** — operational / bug-shaped work → file a GitHub issue (label `bug`
      when bug-shaped, per the project's own convention); record the issue number. It then enters the
      issue lane above.
-   - **`decision-needed`** — a call that is human:<name>'s. Requires filing (or already having) a
+   - **`decision-needed`** — a call that is human:<name>'s BECAUSE it is one-way. A reversible fork
+     instead exits `scoped` on its best-guess default, with the `needs-decision` issue linked as a
+     NOTIFICATION. Requires filing (or already having) a
      `needs-decision` issue per brief-06's template, recorded in the entry's `decision-issue: <NN>`
      field. The intake view renders these at the top as "waiting on a human" — a **pointer** into the
      issue lane's decision queue, never a second queue.
@@ -328,7 +336,8 @@ unaffected, since both layouts parse.
 Stated once for every desk; this skill adds only what is its own above.
 
 - **Escalation labels:** any desk/loop may label an issue `question` (needs an answer from
-  human:<name> or a stronger-tier model to PROCEED — the item PARKS) or `help wanted` (hit a
+  human:<name> or a stronger-tier model to PROCEED — the item PARKS only when the fork is one-way; a
+  reversible item proceeds on its stated default with the label riding on it) or `help wanted` (hit a
   capability/authority edge). A bare label is unanswerable — **comment what you need and from whom**
   when labelling; whoever answers removes the label with their response. A `question` that matures
   into a formal decision fork promotes to `needs-decision` (issue-loop/06). Labelled items are
@@ -345,6 +354,24 @@ Stated once for every desk; this skill adds only what is its own above.
   "remember triaging" is not proof of its current label, state or comment thread. The sanctioned
   memory channel is a rolling cycle summary; it tells you *where to look*, the fresh read tells you
   *what is true*.
+- **Cross-repo evidence binds to the REMOTE, never a bare sibling checkout.** A triage or
+  verification claim about a repo other than the one this desk's worktree is checked out from —
+  "the code still has X", "the fix already landed", a cited file:line — must be resolved against
+  that repo's remote state: `gh api repos/<owner>/<repo>/contents/<path>` (or an equivalent forge
+  read) directly, or a sibling working copy **fetched and confirmed current in this same cycle**.
+  A `git fetch` alone does not confirm anything — it can fail silently (a rewritten remote, a dead
+  credential) and leave the tree exactly as stale as before it ran, and comparing the checkout's
+  own `HEAD` to its own `origin/main` afterward proves nothing since both move together. The only
+  check that catches a silent fetch failure is an INDEPENDENT read of the same ref — e.g. `git -C
+  <checkout> rev-parse origin/main` after the fetch, compared against `gh api
+  repos/<owner>/<repo>/commits/<branch> --jq .sha` (a different protocol, so a rewrite that
+  silently misroutes the git fetch does not also misroute the API call). A local sibling tree read
+  with no such cross-check is not evidence: it can drift arbitrarily far behind with no visible
+  signal, and a grep against a stale tree returns confident, precise, *wrong* line numbers that
+  read as stronger proof than a vaguer correct one. Citing a sibling-repo detail without stating
+  the SHA it was cross-checked against is the same failure — state the SHA, or don't cite the
+  detail. Cannot reach the remote and cannot cross-check the checkout → **could-not-check**, never
+  a claim badged as re-verified.
 - **Identity.** Post and file as this desk's own App via the desk verbs (`deskfile`, `deskpost`,
   `deskreply`, `deskpr`), minting with `desktoken <role>` — never a hand-rolled mint script. A shared
   human/operator login makes authorship ambiguous; a token 404-ing on a repo it should cover means
@@ -356,6 +383,23 @@ Stated once for every desk; this skill adds only what is its own above.
   standing-authorized (scan commits, tooling, brief authoring, close-out carriers). A blocked push or
   guard refusal is a STOP, never a prompt to route around. Never `git restore`/`clean` a shared
   checkout; isolate in your own temp worktree. No attribution lines anywhere.
+- **Reversibility test — default-forward on anything a human-held gate still catches:** before
+  parking an item on the driver, ask ONE question: *is a wrong guess here caught by a gate the
+  driver still controls — a draft PR awaiting merge, a filed issue awaiting close, a flip CI or a
+  human must still make?* **Yes → default-forward.** Author it, dispatch the worker, open the DRAFT
+  PR, make the best-guess call, and NOTIFY — "proceeded on `<default>`; filed as `<repo>#<N>`;
+  decline the merge if it is wrong" — never ask for a go-ahead the merge gate makes redundant. The
+  `needs-decision` / `question` issue is still filed, naming the default taken, but the ITEM does
+  not park on it. Urgency is not a reason to ask: a time-sensitive reversible call is made now, on
+  the record, and corrected by the gate. **No → STOP and wait for the human.** A wrong guess that
+  lands irreversibly or reaches outside the gate is caught by nobody declining a merge. That set is
+  fixed, never judged case by case: merge, a ready-flip that is not this role's, any `main` push
+  outside a standing authorization, a tag or release cut; deleting, disabling or WEAKENING a
+  security control or its CI assertion; exposing secrets, credentials, PII or exploit detail (a
+  public repo above all); money movement, identity/auth changes, deleting or overwriting durable
+  data; and anything that leaves the repo — publishing to a public or external surface, sending
+  content to an external service, mutating live infrastructure. A guard or tool REFUSAL is a STOP on
+  either side of the test — the test never routes around one.
 
 **This desk's own grants and denials.** Branch push + draft PR is standing-authorized (scan commits,
 tooling, brief authoring, close-out carriers). This desk does **not** flip its own PRs ready
@@ -365,8 +409,10 @@ workflows / mutating `kubectl`. Filing issues is allowed; closing is bounded by 
 ## Liveness contract (binding)
 
 A standing liveness contract binds this window from boot: start the standing
-self-scheduled loop BEFORE the first sweep and keep it ticking for the life of
-the window; every tick re-sweeps this desk's own queue fresh; every relay (a
+self-scheduled loop (`capability:durable-monitor` — best-effort, never the sole
+wake signal; the fixed-cadence board sweep is the real liveness backstop and the
+always-on observability service its durable home) BEFORE the first sweep and keep
+it ticking for the life of the window; every tick re-sweeps this desk's own queue fresh; every relay (a
 cross-session hand-over) is acknowledged or filed, never assumed delivered.
 The desk runs **default-forward** — never ask the driver what to work on next:
 a driver scope instruction narrows preference, not a cage — when the scoped

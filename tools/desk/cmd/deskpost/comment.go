@@ -43,6 +43,7 @@ func runComment(owner, name string, num int, wantHead string, body []byte, args 
 		// effects. This runs identically for both kinds: the checks are a
 		// property of the BODY, and nothing about targeting an issue relaxes them.
 		if err := bodycheck.Comment(body); err != nil {
+			deskkit.MaybeExplain(stderr, opts.explain, err)
 			return withDigest(fromReadErr(preVerb, repo, num, "", err), dig)
 		}
 		// #203: the PUBLIC-REPO SELF-CONTAINMENT scan — a body free of credentials can
@@ -130,7 +131,18 @@ func runComment(owner, name string, num int, wantHead string, body []byte, args 
 					"author-trust gate cleared (enforced on issue comments only), public-repo gate passed, "+
 					"no identical comment on "+describe(tgt)+" — stopped before POST"), dig)
 		}
-		if err := client.postComment(num, string(body)); err != nil {
+		// The actual mutating call is routed through deskkit.ForgeFor rather than
+		// client.postComment directly — deskpost's proof-of-reachability wiring for the
+		// forge resolution contract (forgeresolve.go): every read/precondition above this
+		// point still runs on `client` (ghClient) unchanged, but the one write this verb
+		// performs is now served by whatever backend the resolver constructs, authenticated
+		// via the SAME custody path (init, github.go) deskpost already used. Other write
+		// verbs' full migration is a later, separate change.
+		fg, ferr := deskkit.ForgeFor(deskkit.ForgeRepo{Owner: owner, Name: name}, "reviewer")
+		if ferr != nil {
+			return withDigest(fromErr(verb, repo, num, tgt.head, ferr), dig)
+		}
+		if _, err := fg.PostComment(deskkit.ForgeRepo{Owner: owner, Name: name}, num, string(body)); err != nil {
 			return withDigest(fromErr(verb, repo, num, tgt.head, err), dig)
 		}
 		return done(verb, repo, num, tgt.head, dig,

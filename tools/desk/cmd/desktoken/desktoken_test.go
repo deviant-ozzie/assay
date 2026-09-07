@@ -6,11 +6,13 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -124,7 +126,58 @@ func setupTest(t *testing.T) string {
 	t.Setenv("DESK_TOOLS_DISABLED", "")
 	t.Setenv("CLAUDE_SESSION_ID", "test-session")
 	t.Setenv(deskkit.EnvConfigHome, "")
+	// Plant a single-owner roster so the no-`--repo` owner resolution (see
+	// resolveMintOwner) resolves to "example-org" exactly as the old hardcoded
+	// default did — every pre-existing bare-role test keeps asserting the same
+	// install. A test that needs the genuinely-unconfigured or multi-owner path
+	// re-plants with plantRoster / clearRoster.
+	plantRoster(t, homeDir, rosterForOwners("example-org"))
 	return homeDir
+}
+
+// rosterForOwners returns a minimal but VALID roster whose ASSAY_ALLOWED_REPOS
+// names one repo under each given owner. desktoken is a write-class tool, so it
+// reads this from the config-home file (never the environment) — the same source
+// the other desk verbs resolve the org from.
+func rosterForOwners(owners ...string) string {
+	var b strings.Builder
+	b.WriteString("ASSAY_BLESS_LOGIN=ada:2001\n")
+	b.WriteString("ASSAY_TRUSTED_LOGINS=ada:2001\n")
+	b.WriteString("ASSAY_ALLOWED_REPOS=")
+	for i, o := range owners {
+		if i > 0 {
+			b.WriteString(",")
+		}
+		fmt.Fprintf(&b, "%s/tracker:ci:private", o)
+	}
+	b.WriteString("\n")
+	return b.String()
+}
+
+// plantRoster writes roster.env under home's config dir and reloads the cached
+// config so the next EffectiveConfig() read sees it. Cleanup reloads again.
+func plantRoster(t *testing.T, home, roster string) {
+	t.Helper()
+	dir := filepath.Join(home, ".config", "assay")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatalf("planting roster: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "roster.env"), []byte(roster), 0o600); err != nil {
+		t.Fatalf("planting roster: %v", err)
+	}
+	deskkit.ReloadConfig()
+	t.Cleanup(deskkit.ReloadConfig)
+}
+
+// clearRoster removes any planted roster so the owner is genuinely unconfigured,
+// then reloads the cached config.
+func clearRoster(t *testing.T, home string) {
+	t.Helper()
+	if err := os.Remove(filepath.Join(home, ".config", "assay", "roster.env")); err != nil && !os.IsNotExist(err) {
+		t.Fatalf("clearing roster: %v", err)
+	}
+	deskkit.ReloadConfig()
+	t.Cleanup(deskkit.ReloadConfig)
 }
 
 // runCap captures the exit code, stdout, and stderr of a run invocation.
@@ -186,7 +239,135 @@ func TestKillSwitchDisabled(t *testing.T) {
 	}
 }
 
-// --- key/0600 violations --------------------------------------------------------
+// --- key file-mode rule ---------------------------------------------------------
+
+// keyModeCases is the mode table the private-key checker is specified against:
+// reject other-read (0o004) and group/other-write (0o022); allow the rest. The
+// pass rows include 0440, the mode a Secret-mounted key has inside a non-root
+// pod (kubelet writes it root-owned; the pod reads via fsGroup group-read).
+var keyModeCases = []struct {
+	mode os.FileMode
+	ok   bool
+}{
+	{0o600, true},
+	{0o400, true},
+	{0o440, true},
+	{0o640, true},
+	{0o644, false},
+	{0o660, false},
+	{0o666, false},
+	{0o604, false},
+	{0o620, false},
+}
+
+// TestPrivateKeyModeRule pins the bit rule itself, independent of the filesystem.
+func TestPrivateKeyModeRule(t *testing.T) {
+	for _, tc := range keyModeCases {
+		if got := privateKeyModeOK(tc.mode); got != tc.ok {
+			t.Errorf("privateKeyModeOK(%04o) = %v, want %v", tc.mode, got, tc.ok)
+		}
+		err := checkPrivateKeyMode("/keys/private-key.pem", tc.mode)
+		if tc.ok && err != nil {
+			t.Errorf("checkPrivateKeyMode(%04o) refused: %v", tc.mode, err)
+		}
+		if !tc.ok {
+			if err == nil {
+				t.Errorf("checkPrivateKeyMode(%04o) accepted a mode the rule rejects", tc.mode)
+				continue
+			}
+			msg := err.Error()
+			if !strings.Contains(msg, "must not be readable by others or writable by group/others") {
+				t.Errorf("checkPrivateKeyMode(%04o) error does not state the rule: %s", tc.mode, msg)
+			}
+			if want := fmt.Sprintf("permissions %04o", tc.mode); !strings.Contains(msg, want) {
+				t.Errorf("checkPrivateKeyMode(%04o) error does not name the observed mode %q: %s", tc.mode, want, msg)
+			}
+		}
+	}
+}
+
+// TestPrivateKeyModeOnDisk drives the same table through a real file: write a
+// key, chmod it to each mode, and check the verdict against what os.Stat
+// reports. Skipped where chmod does not carry POSIX permission bits (Windows).
+func TestPrivateKeyModeOnDisk(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits are not represented by chmod on windows")
+	}
+	dir := t.TempDir()
+	for _, tc := range keyModeCases {
+		path := filepath.Join(dir, fmt.Sprintf("key-%04o.pem", tc.mode))
+		if err := os.WriteFile(path, []byte("not-a-real-key"), 0o600); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+		if err := os.Chmod(path, tc.mode); err != nil {
+			t.Fatalf("chmod %04o %s: %v", tc.mode, path, err)
+		}
+		fi, err := os.Stat(path)
+		if err != nil {
+			t.Fatalf("stat %s: %v", path, err)
+		}
+		if fi.Mode().Perm() != tc.mode {
+			t.Skipf("filesystem does not preserve mode %04o (got %04o); chmod semantics differ here", tc.mode, fi.Mode().Perm())
+		}
+		err = checkPrivateKeyMode(path, fi.Mode())
+		if tc.ok && err != nil {
+			t.Errorf("mode %04o on disk refused: %v", tc.mode, err)
+		}
+		if !tc.ok && err == nil {
+			t.Errorf("mode %04o on disk accepted; want refusal", tc.mode)
+		}
+	}
+}
+
+// TestKeyGroupReadableMints is the end-to-end form of the fsGroup case: a key at
+// 0440 must get PAST the mode check and mint. (The test process owns the file, so
+// owner-read is what makes it readable here; in the pod it is the group bit.)
+func TestKeyGroupReadableMints(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits are not represented by chmod on windows")
+	}
+	homeDir := setupTest(t)
+	t.Setenv("REVIEWER_APP_ID", "12345")
+	pemPath := filepath.Join(homeDir, ".config", "assay", "reviewer-app.pem")
+	writeFileMode(t, pemPath, makePEM(t), 0o600)
+	if err := os.Chmod(pemPath, 0o440); err != nil {
+		t.Fatalf("chmod 0440: %v", err)
+	}
+	if fi, err := os.Stat(pemPath); err != nil || fi.Mode().Perm() != 0o440 {
+		t.Skipf("filesystem does not preserve mode 0440 (stat: %v)", err)
+	}
+
+	const installID = "100000004"
+	installs := []installationInfo{
+		{ID: 100000004, Account: struct {
+			Login string `json:"login"`
+		}{Login: "example-org"}},
+	}
+	srv, recordedPaths := makeInstallTokenServer(t, installs, "ghs_fsgroup_minted", "2124-01-01T01:00:00Z")
+	defer srv.Close()
+	oldClient := httpClient
+	httpClient = &http.Client{Transport: &rewriteTransport{orig: srv.URL}}
+	defer func() { httpClient = oldClient }()
+
+	rc, stdout, stderr := runCap(t, []string{"reviewer"})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("0440 key rc = %d, want 0; stderr: %s", rc, stderr)
+	}
+	tokenPath := filepath.Join(homeDir, ".config", "assay", "reviewer-token-"+installID)
+	if !strings.Contains(stdout, tokenPath) {
+		t.Fatalf("stdout should contain token path %s; got: %s", tokenPath, stdout)
+	}
+	if len(*recordedPaths) == 0 {
+		t.Fatal("expected an access_tokens request — the 0440 key never reached the mint")
+	}
+	// The token cache this tool WRITES stays exactly 0600 — the relaxed rule is
+	// for the key it reads, not the credential it persists.
+	if fi, err := os.Stat(tokenPath); err != nil || fi.Mode().Perm() != 0o600 {
+		t.Fatalf("token cache mode: want 0600, got stat=%v err=%v", fi, err)
+	}
+}
+
+// --- key violations ---------------------------------------------------------------
 
 func TestKeyMissingUnverifiable(t *testing.T) {
 	_ = setupTest(t)
@@ -205,7 +386,7 @@ func TestKeyMissingUnverifiable(t *testing.T) {
 func TestKeyWrongPermsUnverifiable(t *testing.T) {
 	homeDir := setupTest(t)
 	t.Setenv("REVIEWER_APP_ID", "12345")
-	// Create PEM with 0644 (world-readable) — violates the 0600 rule.
+	// Create PEM with 0644 (world-readable) — violates the other-read rule.
 	writeFileMode(t, filepath.Join(homeDir, ".config", "assay", "reviewer-app.pem"), makePEM(t), 0o644)
 
 	// Make a fake HTTP server so the exchange would succeed if we somehow got
@@ -224,8 +405,11 @@ func TestKeyWrongPermsUnverifiable(t *testing.T) {
 	if rc != deskkit.ExitUnverifiable {
 		t.Fatalf("wrong perms key rc = %d, want 6; stderr: %s", rc, stderr)
 	}
-	if !strings.Contains(stderr, "0600") {
-		t.Fatalf("expected 0600 error; got: %s", stderr)
+	if !strings.Contains(stderr, "must not be readable by others or writable by group/others") {
+		t.Fatalf("expected the key-mode rule in the error; got: %s", stderr)
+	}
+	if !strings.Contains(stderr, "permissions 0644") {
+		t.Fatalf("expected the observed mode 0644 in the error; got: %s", stderr)
 	}
 }
 
@@ -833,10 +1017,11 @@ func TestMintPathUnknownOwnerFailsClosed(t *testing.T) {
 }
 
 // TestMintPathWorkerDefaultOwner exercises the no-`--repo` worker path.
-// When --repo is absent, owner defaults to "example-org" and the install ID
-// is resolved at runtime. This is the test that catches the regression
-// where a hardcoded default install ID (the reviewer App's 100000004)
-// would silently mint against the wrong App's installation.
+// When --repo is absent the owner is resolved from the configured roster — here
+// setupTest plants a single-owner "example-org" roster, so the owner resolves to
+// example-org and the install ID is resolved at runtime. This is the test that
+// catches the regression where a hardcoded default install ID (the reviewer
+// App's 100000004) would silently mint against the wrong App's installation.
 func TestMintPathWorkerDefaultOwner(t *testing.T) {
 	homeDir := setupTest(t)
 	t.Setenv("WORKER_APP_ID", "11111")
@@ -879,6 +1064,144 @@ func TestMintPathWorkerDefaultOwner(t *testing.T) {
 	// Token value must not leak.
 	if strings.Contains(stdout, "ghs_worker_default") {
 		t.Fatalf("token value leaked to stdout: %s", stdout)
+	}
+}
+
+// --- no-`--repo` owner resolution from the configured roster ---------------------
+//
+// The default (no --repo) path used to hardcode the shipped placeholder account
+// as the owner and resolve an installation for it. In a configured deployment
+// that produced a mint that failed and read like a bad credential, when the real
+// cause was that the owner had never been resolved. The three tests below pin the
+// fixed behaviour: resolve the owner from ASSAY_ALLOWED_REPOS (the same source the
+// other desk verbs use), and fail CLOSED with a clear message — never a silent
+// placeholder mint — when the owner is unconfigured or ambiguous.
+
+// TestDefaultOwnerResolvesConfiguredOrg is the primary fix: with a single
+// configured owner that is NOT the placeholder, `desktoken worker` with no --repo
+// mints against THAT owner's installation, not the placeholder account's.
+func TestDefaultOwnerResolvesConfiguredOrg(t *testing.T) {
+	homeDir := setupTest(t)
+	// Re-plant with a single owner that is deliberately not the placeholder.
+	plantRoster(t, homeDir, rosterForOwners("configured-org"))
+	t.Setenv("WORKER_APP_ID", "11111")
+	writeFileMode(t, filepath.Join(homeDir, ".config", "assay", "worker-app.pem"), makePEM(t), 0o600)
+
+	// The installations list carries BOTH the placeholder account and the
+	// configured one, so a wrong resolution (falling back to the placeholder)
+	// would still find an install — the assertion below is what distinguishes them.
+	installs := []installationInfo{
+		{ID: 100000004, Account: struct {
+			Login string `json:"login"`
+		}{Login: "example-org"}},
+		{ID: 424242424, Account: struct {
+			Login string `json:"login"`
+		}{Login: "configured-org"}},
+	}
+	srv, recordedPaths := makeInstallTokenServer(t, installs, "ghs_configured_org", "2124-01-01T00:00:00Z")
+	defer srv.Close()
+	oldClient := httpClient
+	httpClient = &http.Client{Transport: &rewriteTransport{orig: srv.URL}}
+	defer func() { httpClient = oldClient }()
+
+	rc, stdout, stderr := runCap(t, []string{"worker"})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("configured-org resolution rc = %d, want 0; stderr: %s", rc, stderr)
+	}
+	tokenPath := filepath.Join(homeDir, ".config", "assay", "worker-token-424242424")
+	if !strings.Contains(stdout, tokenPath) {
+		t.Fatalf("stdout should contain the configured-org token path %s; got: %s", tokenPath, stdout)
+	}
+	// THE LOAD-BEARING ASSERTION: the mint targeted the CONFIGURED owner's install,
+	// NOT the placeholder account's — the exact regression the fix removes.
+	if len(*recordedPaths) == 0 {
+		t.Fatal("expected an access_tokens request")
+	}
+	if !strings.Contains((*recordedPaths)[0], "424242424") {
+		t.Fatalf("access_tokens path should target the configured-org install 424242424; got: %s", (*recordedPaths)[0])
+	}
+	if strings.Contains((*recordedPaths)[0], "100000004") {
+		t.Fatalf("access_tokens path must NOT target the placeholder install 100000004; got: %s", (*recordedPaths)[0])
+	}
+}
+
+// TestDefaultOwnerUnconfiguredFailsClosed pins the second half of the fix: a
+// genuinely unconfigured owner (no roster) is a CLEAR could-not-check message
+// naming the placeholder, at exit 6 — never a silent rc-6 mint against the
+// placeholder that reads like an auth failure, and never a mint at all.
+func TestDefaultOwnerUnconfiguredFailsClosed(t *testing.T) {
+	homeDir := setupTest(t)
+	// Remove the roster setupTest planted: the owner is now genuinely unconfigured.
+	clearRoster(t, homeDir)
+	t.Setenv("WORKER_APP_ID", "11111")
+	writeFileMode(t, filepath.Join(homeDir, ".config", "assay", "worker-app.pem"), makePEM(t), 0o600)
+
+	// A server that WOULD mint if reached — so a false success is observable as a
+	// recorded access_tokens POST rather than passing silently.
+	installs := []installationInfo{
+		{ID: 100000004, Account: struct {
+			Login string `json:"login"`
+		}{Login: "example-org"}},
+	}
+	srv, recordedPaths := makeInstallTokenServer(t, installs, "ghs_should_not_mint", "2124-01-01T00:00:00Z")
+	defer srv.Close()
+	oldClient := httpClient
+	httpClient = &http.Client{Transport: &rewriteTransport{orig: srv.URL}}
+	defer func() { httpClient = oldClient }()
+
+	rc, stdout, stderr := runCap(t, []string{"worker"})
+	if rc != deskkit.ExitUnverifiable {
+		t.Fatalf("unconfigured owner rc = %d, want 6 (could-not-check); stderr: %s", rc, stderr)
+	}
+	// The message must name the placeholder AND how to fix it — not a bare rc=6.
+	if !strings.Contains(stderr, "example-org") {
+		t.Fatalf("error must name the example-org placeholder; got: %s", stderr)
+	}
+	if !strings.Contains(stderr, "--repo") || !strings.Contains(stderr, deskkit.EnvAllowedRepos) {
+		t.Fatalf("error must say how to fix it (--repo or %s); got: %s", deskkit.EnvAllowedRepos, stderr)
+	}
+	// It must fail BEFORE any mint: no token minted, no token path printed.
+	if len(*recordedPaths) != 0 {
+		t.Fatalf("no mint should be attempted for an unconfigured owner; got %v", *recordedPaths)
+	}
+	if strings.TrimSpace(stdout) != "" {
+		t.Fatalf("no token path should be printed on the fail-closed path; got: %q", stdout)
+	}
+}
+
+// TestDefaultOwnerAmbiguousFailsClosed covers the real multi-org deployment: with
+// several configured owners and no --repo, the owner is ambiguous. The mint fails
+// closed naming the owners and telling the caller to pass --repo — an installation
+// token is per account, so the process refuses to guess.
+func TestDefaultOwnerAmbiguousFailsClosed(t *testing.T) {
+	homeDir := setupTest(t)
+	plantRoster(t, homeDir, rosterForOwners("org-one", "org-two"))
+	t.Setenv("WORKER_APP_ID", "11111")
+	writeFileMode(t, filepath.Join(homeDir, ".config", "assay", "worker-app.pem"), makePEM(t), 0o600)
+
+	installs := []installationInfo{
+		{ID: 111111111, Account: struct {
+			Login string `json:"login"`
+		}{Login: "org-one"}},
+	}
+	srv, recordedPaths := makeInstallTokenServer(t, installs, "ghs_should_not_mint", "2124-01-01T00:00:00Z")
+	defer srv.Close()
+	oldClient := httpClient
+	httpClient = &http.Client{Transport: &rewriteTransport{orig: srv.URL}}
+	defer func() { httpClient = oldClient }()
+
+	rc, _, stderr := runCap(t, []string{"worker"})
+	if rc != deskkit.ExitUnverifiable {
+		t.Fatalf("ambiguous owner rc = %d, want 6; stderr: %s", rc, stderr)
+	}
+	if !strings.Contains(stderr, "org-one") || !strings.Contains(stderr, "org-two") {
+		t.Fatalf("error must list the ambiguous owners; got: %s", stderr)
+	}
+	if !strings.Contains(stderr, "--repo") {
+		t.Fatalf("error must tell the caller to pass --repo; got: %s", stderr)
+	}
+	if len(*recordedPaths) != 0 {
+		t.Fatalf("no mint should be attempted for an ambiguous owner; got %v", *recordedPaths)
 	}
 }
 

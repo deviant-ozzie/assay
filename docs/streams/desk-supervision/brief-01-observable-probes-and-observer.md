@@ -143,5 +143,40 @@ default policy numbers suit this house — a knob, not a defect.
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
 
+| # | Exit | Output | Date | Runner |
+|---|------|--------|------|--------|
+| 1 | 0 | `ok  	github.com/medici-finance/assay/tools/desk/internal/loopengine	0.223s` | 2026-09-02 | implementing worker |
+| 2 | 0 | `USAGE:` / `desksupervise tick [...]` / `desksupervise run --interval DUR [...]` (both `tick` and `run --interval` present) | 2026-09-02 | implementing worker |
+| 3 | 0 | `example-stream--dead-01  HEARTBEAT-EXPIRED last=2026-09-02T11:00:00Z via=branch sha moved action=RECLAIM-ELIGIBLE` | 2026-09-02 | implementing worker |
+| 4 | 0 | `example-stream--alive-01  ALIVE last=2026-09-02T11:58:00Z via=audit line action=none` (no `RECLAIM` substring) | 2026-09-02 | implementing worker |
+| 5 | 6 | `example-stream--dead-01  COULD-NOT-CHECK last=none via=- action=BLIND` then `1 of 1 claim(s) were COULD-NOT-CHECK (action=BLIND) — the tick ran, the reading is incomplete`; `rc=6` (no `RECLAIM` substring) | 2026-09-02 | implementing worker |
+| 6 | 0 | `example-stream--never-01  NEVER-STARTED last=none via=- action=RECLAIM-ELIGIBLE` | 2026-09-02 | implementing worker |
+| 7 | 0 | `example-stream--long-01  OVER-WALL-CAP last=2026-09-02T12:00:00Z via=branch sha moved action=BLOCKED-TIMEOUT` (no `RECLAIM` substring) | 2026-09-02 | implementing worker |
+| 8 | 0 | `5` (`tools/desk/internal/loopengine/probes.go` plus four files under `tools/desk/cmd/desksupervise/` — `main.go`, `run.go`, `live.go`, `fixtures.go` — match `ObservableProbe`) | 2026-09-02 | implementing worker |
+| 9 | 0 | `1` (`tools/desk/README.md`'s new `desksupervise` tool-reference row) | 2026-09-02 | implementing worker |
+| 10 | 0 | `consumers corroboration — ... 1 brief(s)` / `desk-supervision/01` / both `consumers:` claims read `UNCHECKED` (each "unchanged since the merge-base", correct: `engine.go` is deliberately untouched — "no engine edit" — and the SKILL.md row is an explicit `desk-supervision/07` follow-up) / `summary: 0 corroborated, 0 disproved, 2 unchecked` — no `DISPROVED` anywhere | 2026-09-02 | implementing worker |
+
+Also run (not a Verify row, full-suite regression check): `cd tools/desk && GOWORK=off go build ./... && GOWORK=off go vet ./... && GOWORK=off go test ./... -count=1` — every package `ok` (2026-09-02); `tools/desk/internal/deskkit`'s `TestNoForgeCLIShellout` required registering `tools/desk/cmd/desksupervise/live.go`'s runtime-resolved exec of the consumer repo's own dispatch-claim script in `tools/desk/internal/forgeban/allowlist.go`'s `UnresolvedArgv` ledger (same shape as the existing deskboard/deskpreflight runtime-resolved-binary entries) — fixed in a follow-up commit on this branch.
+### Non-implementer verifier run — VERIFY: PASS — 2026-09-04 opus-4.8[1m]-verifier (verify-desk dispatch), merged main 4e500df
+
+Runner != implementer. Offline (KUBECONFIG=/dev/null). gate: model, risk {all no}, irreversible: no. Landed via merge bc77fd5.
+
+| # | Command | Exit | Key output | Date | Runner |
+|---|---------|------|-----------|------|--------|
+| 1 | GOWORK=off go test ./internal/loopengine/ -run Probe | 0 | ok loopengine 39.152s | 2026-09-04 | opus-4.8[1m]-verifier |
+| 2 | go build ./cmd/desksupervise && ./desksupervise --help | 0 | USAGE lists tick and run --interval | 2026-09-04 | opus-4.8[1m]-verifier |
+| 3 | tick --dry-run dead-worker | 0 | HEARTBEAT-EXPIRED action=RECLAIM-ELIGIBLE | 2026-09-04 | opus-4.8[1m]-verifier |
+| 4 | tick --dry-run alive-worker (branch-only) | 0 | ALIVE action=none (no RECLAIM) | 2026-09-04 | opus-4.8[1m]-verifier |
+| 5 | tick --dry-run blind-obs | 6 | COULD-NOT-CHECK action=BLIND (no RECLAIM) — tick ran, reading incomplete | 2026-09-04 | opus-4.8[1m]-verifier |
+| 6 | tick --dry-run never-started | 0 | NEVER-STARTED action=RECLAIM-ELIGIBLE | 2026-09-04 | opus-4.8[1m]-verifier |
+| 7 | tick --dry-run --now T14:00 long-runner | 0 | OVER-WALL-CAP action=BLOCKED-TIMEOUT (no RECLAIM) | 2026-09-04 | opus-4.8[1m]-verifier |
+| 8 | grep -rln ObservableProbe cmd loopengine/probes.go \| wc -l | 0 | 5 | 2026-09-04 | opus-4.8[1m]-verifier |
+| 9 | grep -c desksupervise tools/desk/README.md | 0 | 1 | 2026-09-04 | opus-4.8[1m]-verifier |
+| 10 | statusgen --root . --consumers --brief desk-supervision/01 | 0 | 0 corroborated 0 disproved 2 unchecked; zero DISPROVED (implementing-diff base) | 2026-09-04 | opus-4.8[1m]-verifier |
+
+**VERIFY: PASS** — all 10 rows ran; every pre-mortem detection row (branch-only=ALIVE, unreachable-forge=BLIND-not-dead, wall-cap=BLOCKED-not-reclaimed) behaves correctly.
+
+**RISK-VALUE: N/A** — enumeration over the diff found no literal constant/threshold/timeout introduced or changed; all liveness-policy numbers pre-exist in untouched liveness.go and are reversible operational timeouts; the observer defers to the pre-existing DefaultLivenessPolicy; no irreversible act (its only writes are a claim release, a journal line, one idempotent filed issue).
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.

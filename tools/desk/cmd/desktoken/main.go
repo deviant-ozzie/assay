@@ -26,8 +26,10 @@
 // App ID comes from <ROLE>_APP_ID env (e.g. REVIEWER_APP_ID) else apps.env on the
 // same search path — App IDs are never baked into source. The installation is
 // resolved at runtime via GET /app/installations, matching the repo owner against
-// account.login (defaults to "example-org" when --repo is absent); <ROLE>_INSTALL_ID
-// overrides. The token is cached as <role>-token-<installID> (0600) and reused if
+// account.login. When --repo is absent the owner is resolved from the configured
+// allowed-repo roster (the same source the other desk verbs use); it fails closed
+// naming the "example-org" placeholder when no owner can be resolved.
+// <ROLE>_INSTALL_ID overrides. The token is cached as <role>-token-<installID> (0600) and reused if
 // < 50 min old, alongside a <cache>.perms sidecar recording what the installation
 // was GRANTED (the grant is visible only in the mint response; `deskroster
 // preflight` checks it against the role's duties — #571). The token SECRET is
@@ -36,23 +38,39 @@
 // This tool provides attribution (which App name appears on GitHub) plus an audit
 // trail — it does NOT enforce authorization (which session may act as each role).
 // The caller holds the key and controls the env; every key is readable by any
-// session of the same OS user. File permissions (0600) protect from other users
+// session of the same OS user. File permissions (0600 on a workstation; 0440
+// for a Secret-mounted key read via a pod's fsGroup) protect from other users
 // only, not from other sessions of the same user.
 //
 // Inherits deskkit: audit (one line per mint), kill-switch (Guard first),
 // fail-closed. Exit: 0 ok/noop · 3 disabled · 5 refused · 6 unverifiable.
 package main
 
-import "os"
+import (
+	"os"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+)
 
 const usage = `desktoken — mint or reuse a per-role forge credential.
 
 USAGE:
   desktoken <role> [--repo <slug>] [--ttl]           # GitHub: mint/reuse App token
   desktoken --forge gitlab <role>                     # GitLab: rotate PAT in place
+  desktoken coverage <role> [--repo <slug>] [--json]  # GitHub: list repos the role's App sees
   desktoken --version
 
 <role> ∈ {reviewer, verifier, worker, desk, issue-loop, intake-loop}
+
+coverage — read-only enumeration. Lists every installation of the role's App and
+the repositories each can see, one block per installation (stable order, by
+account login). It mints a token per installation into MEMORY only: it writes no
+token cache and no .perms sidecar, and prints no token or JWT. --repo <slug>
+prints only the installation that sees that repository and exits 0 if one does,
+5 if none (the slug is matched on owner/name, not the bare name). --json emits
+the same enumeration as one object. A repository-page read that fails is exit 6
+naming the installation — never a short list read as complete. GitHub-only:
+--forge gitlab is refused (a PAT has no installation to enumerate).
 
 --forge selects the backend: empty or github (default) mints a GitHub App
 installation token as below; gitlab rotates the role's PAT in place.
@@ -76,12 +94,18 @@ GitLab (--forge gitlab) — rotate-on-mint token custody:
   refuses BEFORE any network contact rather than transmit the role's live PAT
   to a guessed host.
 
-Reads <role>-app.pem (0600) for the App's private key, and apps.env for the
+Reads <role>-app.pem for the App's private key, and apps.env for the
 App ID, from the App-credential SEARCH PATH: $ASSAY_CONFIG_HOME (when set),
-then ~/.config/assay. <ROLE>_APP_ID / <ROLE>_PEM override.
+then ~/.config/assay. <ROLE>_APP_ID / <ROLE>_PEM override. The key file must
+not be readable by others or writable by group/others: 0600 or 0400 on a
+workstation; 0440 is accepted because a Secret-mounted key read through a
+pod's fsGroup is necessarily root-owned and group-readable.
 Installation resolved at runtime via GET /app/installations, matching the
-repo owner against account.login (defaults to "example-org" when --repo is
-absent); <ROLE>_INSTALL_ID overrides.
+repo owner against account.login. When --repo is absent the owner is resolved
+from the configured allowed-repo roster (ASSAY_ALLOWED_REPOS, the same source
+the other desk verbs use); an owner that cannot be resolved fails closed with a
+message naming the "example-org" placeholder rather than minting against it.
+<ROLE>_INSTALL_ID overrides.
 Caches the token as <role>-token-<installID> (0600) at the HEAD of the search
 path, plus a <cache>.perms sidecar recording the installation's granted scopes.
 Reuses the cached token if < 50 min old; otherwise mints a fresh one.
@@ -96,5 +120,12 @@ directory this repo's App-provisioning walkthrough uses (#794).
 Exit: 0 ok/noop · 3 disabled · 5 refused · 6 unverifiable.`
 
 func main() {
+	// Explicit roster class: desktoken ACTS (it mints a credential) and, when --repo
+	// is absent, it READS the configured allowed-repo roster to resolve the owner —
+	// file-only, never the environment — so ciEligible=false. The P3 echo makes that
+	// control-surface read visible at run time, like every other roster-reading verb.
+	// Both go to stderr; desktoken's stdout stays the token PATH alone.
+	deskkit.SetToolClass(deskkit.ClassForTool(false))
+	deskkit.EchoEffectiveConfig(os.Stderr)
 	os.Exit(run(os.Args[1:]))
 }

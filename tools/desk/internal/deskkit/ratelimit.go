@@ -14,10 +14,13 @@ const (
 	// verify-desk's Evidence-drain ceiling as well as the per-PR cap.
 	//
 	// 10 was the original value. It was the busiest-hour figure measured from the
-	// ledger (#1255's extract — the busiest rolling hour on record landed only a
-	// minority of its attempts as real posts), carried forward from the retired
-	// RateLimitPerHour as the blast-radius cap: one runaway agent's write ceiling
-	// on a single target.
+	// ledger in #1255's extract — as of that extract, the busiest rolling hour it
+	// examined landed only a minority of its attempts as real posts. The figure is
+	// DATED to that extract deliberately, not stated as a standing record: later
+	// clock hours have carried more `ok` deskpost posts than that extract's peak, so
+	// "10 was the busiest hour" ages only if it is read as "as of #1255", not as a
+	// current fact. It was carried forward from the retired RateLimitPerHour as the
+	// blast-radius cap: one runaway agent's write ceiling on a single target.
 	//
 	// Raised to 20 on 2026-08-14 to accelerate the verification-backlog drain.
 	// Empirical basis, measured this date from ~/.config/assay/audit.jsonl: the
@@ -32,8 +35,10 @@ const (
 	// So 20 is a deliberate throughput LOOSENING for a supervised drain — 2× the
 	// measured peak — NOT a new measurement of busiest-hour demand. Stated as
 	// plainly as RateLimitPerRepoPerHour below states that it is "not measured":
-	// the busiest-hour figure on record remains 10; 20 buys drain headroom above
-	// it and nothing here re-measures the peak.
+	// the busiest-hour figure IN THE #1255 EXTRACT was 10 (dated to that extract,
+	// not claimed as a standing record — see above); 20 buys drain headroom above
+	// it and nothing here re-measures the peak. The conclusion is unaffected by a
+	// higher later peak: 20 clears any busiest hour observed since.
 	//
 	// Loop-safety is unaffected by this number. The circuit breaker (BreakerTrip
 	// consecutive non-progress attempts — an independent meter) still bounds a
@@ -192,6 +197,19 @@ func UnnumberedCapFor(tool string) int {
 // Note the asymmetry with the gates themselves: a dry run is still SUBJECT to both
 // meters (runOutward calls AllowWrite before it knows the verb's shape), it just does
 // not FEED them. That is the fail-closed direction — a rehearsal is free, not privileged.
+//
+// KNOWN, ACCEPTED CONSEQUENCE: because a dryrun feeds neither meter, a loop of PURE
+// dry runs never accumulates anything AllowWrite counts, so AllowWrite admits every
+// one of them. Their outward WRITES stay zero (that is the whole point), but each
+// rehearsal still makes its plan-time remote GETs, so a pure-rehearsal loop's remote
+// READS are effectively unbounded. Before ResultDryRun was made breaker-invisible a
+// dry run audited `noop`, which the breaker counted, so a rehearsal loop incidentally
+// stopped at BreakerTrip; that incidental bound is gone by design. Bounding rehearsal
+// READS would need a SEPARATE rehearsal meter (new design, deliberately not built
+// here) — and the properties that matter are unaffected: a runaway of REAL cuts still
+// trips (a success flood caps at RateLimitPerPRPerHour, a refusal loop opens the
+// breaker at BreakerTrip with zero writes, and splicing a dryrun between refusals does
+// not disarm it — see the dry-run tests in ratelimit_test.go).
 
 // chargesBudget reports whether an audit result consumes outward-write budget.
 //
@@ -248,19 +266,31 @@ func chargesBudget(result string) bool {
 // nothing at the remote — the fuel of a spinning caller, and what the circuit breaker
 // counts.
 //
-// ResultRefused and ResultNoop qualify. So does ResultUnwritten (#448): a
+// ResultRefused qualifies. So does ResultUnwritten (#448): a
 // precondition that could not be verified before any write was attempted is, to a caller
 // looping on the same input, indistinguishable in shape from a refusal — nothing reached
 // the remote, and it must count toward the breaker or a repeated failed-precondition loop
 // would be bounded by NEITHER meter (chargesBudget already excludes it from the budget).
-// ResultRateLimited, ResultDisabled and
-// ResultDryRun deliberately do NOT: the first two are the stops' own output, and counting
-// them would let the breaker hold itself open forever off its own refusals — the exact
-// livelock this file exists to remove, re-entered through the second meter. ResultOK and
+//
+// ResultNoop no longer qualifies (#180). A no-op is the tool confirming the desired state
+// ALREADY HOLDS — the shape of a healthy idempotent verb that a standing loop re-asserts on
+// every quiet tick (e.g. `deskdisposition set` re-asserting an unchanged verdict), not a
+// caller spinning on a failure. Counting it tripped the breaker on the fifth CONSECUTIVE
+// quiet tick with nothing having failed; the refusals that trip then produced were
+// themselves non-progress, so the run never reset on its own. It is now NEUTRAL — invisible
+// via breakerIgnores, neither tripping the breaker nor resetting it — so only
+// refused/unwritten advance the run. Invisible rather than progress-that-resets is the
+// fail-closed half (identical to ResultDryRun's, #214): a spinning caller must not be able
+// to launder a refusal run clean by interleaving idempotent no-ops between its refusals.
+//
+// ResultRateLimited, ResultDisabled and ResultDryRun are likewise invisible via
+// breakerIgnores (see there): the first two are the stops' own output, and counting them
+// would let the breaker hold itself open forever off its own refusals — the exact livelock
+// this file exists to remove, re-entered through the second meter. ResultOK and
 // ResultUnverifiable are progress and RESET the breaker — a genuinely ambiguous POST may
 // have landed, so it must not be treated as though it definitely did not.
 func nonProgress(result string) bool {
-	return result == ResultRefused || result == ResultNoop || result == ResultUnwritten
+	return result == ResultRefused || result == ResultUnwritten
 }
 
 // breakerIgnores reports whether a result is invisible to the breaker's consecutive-run
@@ -280,8 +310,18 @@ func nonProgress(result string) bool {
 // refusals and reset the breaker's run to zero every time, disarming the loop stop with
 // the very flag that was supposed to be free. Ignored, it can neither trip the breaker
 // nor rescue a caller from it.
+//
+// ResultNoop is here for #180, and for the SAME fail-closed reason as ResultDryRun. A
+// no-op is the tool confirming the desired state already holds, so a standing idempotent
+// loop must be able to re-assert an unchanged verdict on every quiet tick without the
+// breaker trip counting up — five consecutive quiet ticks are a HEALTHY idle loop, not a
+// spinning caller, and counting them opened the breaker on the fifth with nothing having
+// failed. INVISIBLE is again the whole requirement: treating the no-op as progress instead
+// would let a spinning caller splice an idempotent no-op between its refusals to reset the
+// run and hold the loop stop disarmed. Ignored, it neither trips the breaker nor rescues a
+// caller from it.
 func breakerIgnores(result string) bool {
-	return result == ResultRateLimited || result == ResultDisabled || result == ResultDryRun
+	return result == ResultRateLimited || result == ResultDisabled || result == ResultDryRun || result == ResultNoop
 }
 
 // AllowWrite enforces the outward-write gate as of now. See AllowWriteAt.
@@ -373,6 +413,10 @@ func AllowVerdictIssueWriteAt(repo string, now time.Time) error {
 
 // AllowWriteRepoWideAt is AllowWriteRepoWide with an injectable clock.
 func AllowWriteRepoWideAt(tool, repo string, now time.Time) error {
+	tool, err := RequireCanonicalToolKey(tool)
+	if err != nil {
+		return err // a key attributing to no known tool is refused, never given a private budget
+	}
 	mine, err := pointsFor(tool)
 	if err != nil {
 		return err
@@ -410,6 +454,10 @@ func AllowWriteRepoWideAt(tool, repo string, now time.Time) error {
 //     timestamp is unparseable — never a silent "assume under budget";
 //   - nil when one more write is within all budgets and the breaker is closed.
 func AllowWriteAt(tool, repo string, pr int, now time.Time) error {
+	tool, err := RequireCanonicalToolKey(tool)
+	if err != nil {
+		return err // a key attributing to no known tool is refused, never given a private budget
+	}
 	mine, err := pointsFor(tool)
 	if err != nil {
 		return err
@@ -445,15 +493,24 @@ func pointsFor(tool string) ([]auditPoint, error) {
 	if err != nil {
 		return nil, err // already an Unverifiable *DeskError
 	}
+	// Count by CANONICAL key so variant spellings of one tool share one budget: a test
+	// build (deskpost.test), a locally built copy (deskpr-322), or a guard line written
+	// under a basename all fold into the same tool's meter instead of each escaping into a
+	// fresh, uncounted bucket (audittoolkey.go). The caller's `tool` is resolved the same
+	// way, so a caller passing a variant is metered against the canonical history too. An
+	// unregistered key stays its own opaque bucket here (CanonicalToolKeyOr returns it
+	// unchanged) rather than failing this read closed — the write GATE is where an
+	// unattributable key is refused (RequireCanonicalToolKey), not the counting read.
+	want := CanonicalToolKeyOr(tool)
 	var mine []auditPoint
 	for _, e := range entries {
-		if e.Tool != tool {
+		if CanonicalToolKeyOr(e.Tool) != want {
 			continue
 		}
 		ts, perr := time.Parse(time.RFC3339, e.TS)
 		if perr != nil {
 			return nil, Unverifiable(
-				fmt.Sprintf("audit entry for %q has an unparseable ts %q — move file aside to audit.jsonl.corrupt-<ts>", tool, e.TS),
+				fmt.Sprintf("audit entry for %q has an unparseable ts %q — run `deskaudit recover` (quarantines the bad line and carries good entries forward; a plain move resets the budget + idempotency)", tool, e.TS),
 				perr)
 		}
 		mine = append(mine, auditPoint{ts: ts, result: e.Result, repo: e.Repo, pr: e.PR})
