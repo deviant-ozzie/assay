@@ -71,6 +71,7 @@ var canonicalToolKeys = map[string]struct{}{
 	"deskfile":        {},
 	"deskflip":        {},
 	"deskgit":         {},
+	"deskinstall":     {},
 	"deskmerge":       {},
 	"deskmigrate":     {},
 	"deskpins":        {},

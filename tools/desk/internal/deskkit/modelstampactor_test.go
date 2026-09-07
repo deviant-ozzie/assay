@@ -380,9 +380,19 @@ func TestReStampRemovals(t *testing.T) {
 // The end-to-end invariant of the recovery: a PR whose stamp is present-but-unreadable because
 // the dispatcher left a conflicting label REFUSES before a re-stamp, and after ReStampRemovals
 // clears the conflict and the intended pair stands alone under the dispatcher, the floor CLEARS
-// — while a below-floor `want` tier still refuses and a foreign applier still refuses. This is
-// the whole point: the recovery breaks the deadlock without widening what the floor trusts.
-func TestReStampRecoveryClearsWithoutWeakeningFloor(t *testing.T) {
+// — while a genuinely below-floor tier still refuses and a foreign applier still refuses. This
+// is the whole point: the recovery breaks the deadlock without widening what the floor trusts.
+//
+// `dispatched-tier:any` is NOT the below-floor example. Per the floor's contract (see
+// modelfloor.go, "WHY `any` IS ABSENT, NOT BELOW") `any` is the brief schema's "no particular
+// runner demanded" — a stamp that records no strength claim — so a re-stamp to `any` takes the
+// same outcome as an unstamped PR: proceed with a NOTICE that names the label. The below-floor
+// refusal is kept live by the rank order, and this test drives it the way the floor's own
+// rank test does (`-run TestFloorTierRank` in modelfloor_test.go, which pins the below-floor
+// branch live): a synthetic rung the vocabulary does not carry neither meets the floor nor
+// claims no strength, so it lands on the refuse side of both questions, and a stamp naming it
+// refuses end to end.
+func TestReStampRecoveryKeepsTheFloor(t *testing.T) {
 	const disp = "the-dispatcher"
 	model := DispatchedModelPrefix + "example-model-1"
 	tier := DispatchedTierPrefix + "strong"
@@ -411,13 +421,40 @@ func TestReStampRecoveryClearsWithoutWeakeningFloor(t *testing.T) {
 		t.Fatalf("post-recovery outcome = %v (%s), want FloorAllow", d.Outcome, d.Message)
 	}
 
-	// The floor is NOT weakened. A re-stamp to a below-floor tier still refuses.
-	lowTier := DispatchedTierPrefix + "any"
+	// A re-stamp to `any` is a readable, dispatcher-applied stamp that claims no strength:
+	// NOTICE, not refusal, and the NOTICE names the label it read so the operator can tell it
+	// from the unstamped case.
+	lowTier := DispatchedTierPrefix + NoStrengthClaimTier
 	low := StampTimeline{Present: []string{model, lowTier}, Events: []LabelEvent{
 		labeledBy(model, disp), labeledBy(lowTier, disp),
 	}}
-	if d := ModelCapabilityFloor(low, dispatcherIs(disp), false); d.Outcome != FloorRefuse {
-		t.Fatalf("below-floor tier outcome = %v, want FloorRefuse — the recovery must not admit a weak tier", d.Outcome)
+	if d := ModelCapabilityFloor(low, dispatcherIs(disp), false); d.Outcome != FloorNoticeAllow {
+		t.Fatalf("tier-any outcome = %v (%s), want FloorNoticeAllow — `any` is no strength claim, not a below-floor tier", d.Outcome, d.Message)
+	} else if !strings.Contains(d.Message, "NOTICE") || !strings.Contains(d.Message, lowTier) {
+		t.Fatalf("the tier-any NOTICE does not name the %s label it read:\n%s", lowTier, d.Message)
+	}
+
+	// The floor is NOT weakened. A re-stamp to a genuinely below-floor tier still refuses —
+	// the recovery must not admit a weak tier. The vocabulary as it stands has no such rung,
+	// so this is driven exactly as the floor's rank test drives it: a synthetic rung that
+	// neither meets the floor nor claims no strength is on the refuse side of both questions
+	// the floor asks of a readable stamp, in that order.
+	const weakTier = "some-tier-nobody-emits"
+	if tierMeetsFloor(weakTier) {
+		t.Fatalf("synthetic rung %q meets the %s floor — the recovery would admit a weak tier", weakTier, ModelFloorTier)
+	}
+	if tierClaimsNoStrength(weakTier) {
+		t.Fatalf("synthetic rung %q reads as claiming no strength — it would take the NOTICE, not the refusal", weakTier)
+	}
+	// And end to end, a stamp naming that rung, applied by the dispatcher after the same
+	// recovery, refuses. (The reader holds the vocabulary to {any, strong}, so today the rung
+	// arrives as present-but-unreadable rather than as a readable below-floor tier; either
+	// way the floor fails closed, which is the invariant this block guards.)
+	weak := StampTimeline{Present: []string{model, DispatchedTierPrefix + weakTier}, Events: []LabelEvent{
+		labeledBy(model, disp), labeledBy(DispatchedTierPrefix+weakTier, disp),
+	}}
+	if d := ModelCapabilityFloor(weak, dispatcherIs(disp), false); d.Outcome != FloorRefuse {
+		t.Fatalf("below-floor tier outcome = %v (%s), want FloorRefuse — the recovery must not admit a weak tier", d.Outcome, d.Message)
 	}
 
 	// And a clean pair applied by a NON-dispatcher still refuses (self-report is worthless).
