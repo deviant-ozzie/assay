@@ -93,6 +93,12 @@ type PullRequest struct {
 	// predates this field and reads none of it, so its addition changes no existing
 	// behavior.
 	UpdatedAt string
+	// Body is the change's description text — the source of the one link trailer
+	// (`Brief: <stream>/<NN>` / `Issue: #<N>`). Consumer: cmd/deskflip's security lane,
+	// which resolves the owning brief from the trailer and consults the brief's own
+	// gate/risk frontmatter (BriefRiskFromBody) as an additive risk-classification term.
+	// omitempty keeps a bodyless change byte-identical in the forge golden corpus.
+	Body string `json:",omitempty"`
 }
 
 // The three values PullRequest.Mergeable takes. They are constants rather than free strings
