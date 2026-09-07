@@ -126,6 +126,7 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 		// Body validation (verdict schema + secret scan) BEFORE any network — a bad
 		// body must refuse with zero side effects.
 		if err := bodycheck.Review(body); err != nil {
+			deskkit.MaybeExplain(stderr, opts.explain, err)
 			return withDigest(fromReadErr(preVerb, repo, pr, "", err), dig)
 		}
 		// #203: the PUBLIC-REPO SELF-CONTAINMENT scan. A review body is the densest

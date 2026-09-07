@@ -93,8 +93,8 @@ func parseBriefTable(body string) ([]Brief, error) {
 				break
 			}
 			cells := splitRow(row)
-			if len(cells) < len(cols) {
-				return nil, fmt.Errorf("row has %d cells, header has %d: %q", len(cells), len(cols), row)
+			if len(cells) != len(cols) {
+				return nil, fmt.Errorf("row has %d cells, header has %d: %q — a briefs-table row must have exactly one cell per column. The usual cause of extra cells is a PR reference written into the Status cell (e.g. `implemented (#80)`) or a stray `||`, which prepends a cell and shifts every column right. The Status cell takes ONLY a bare lifecycle token (todo / in-progress / implemented / verified / done / blocked); the PR association belongs in the PR body or the `Brief:` trailer, never in the cell", len(cells), len(cols), row)
 			}
 			get := func(name string) string { return strings.TrimSpace(cells[idx[name]]) }
 			wave, err := strconv.Atoi(get("wave"))

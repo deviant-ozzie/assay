@@ -31,6 +31,8 @@ binds the DESK's own writes; the worker is bound to the same fragment rule throu
 > Bindings for your harness — which mechanism each `capability:*` names — are in
 > `../../references/<harness>.md`.
 
+> Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, and role/repo coverage — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
+
 ## Boot
 
 `deskboot worker-desk` — loop identity, `deskwt prune`, worktree lock, roster register, roster

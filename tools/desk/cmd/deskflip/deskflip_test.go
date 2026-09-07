@@ -31,6 +31,8 @@ package main
 
 import (
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -588,6 +590,188 @@ func TestSurfaceCoreLabelRiskClassesEvenWithoutAPathTrigger(t *testing.T) {
 	}
 	if !s2.flipped() {
 		t.Error("a surface:core PR with a security pass at head did not flip")
+	}
+}
+
+// plantBriefRoot writes a brief file under a temp stream root and points DESK_ROOTS at it
+// for the repo, so BriefRiskFromBody resolves the PR's Brief: trailer to it.
+func plantBriefRoot(t *testing.T, repo, stream, nn, content string) {
+	t.Helper()
+	root := t.TempDir()
+	dir := filepath.Join(root, "docs", "streams", stream)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "brief-"+nn+"-thing.md"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(deskkit.RootsEnv, repo+"="+root)
+}
+
+// The owning brief's OWN declaration risk-classes the PR: a PR delivering a `gate: human`
+// brief, on a repo NOT risk-classed on visibility and touching NO trigger path, still needs
+// a `Security-Review: pass` at head. Before the fix the brief was never consulted, so the
+// PR flipped on the correctness review alone — the false negative this branch exists for.
+func TestOwningBriefGateHumanRiskClassesWithoutAPathTrigger(t *testing.T) {
+	humanGated := "---\ngate: human\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}\n---\nbody"
+
+	// Without a security pass: the brief risk-classes it, so the flip is REFUSED.
+	s := newStub()
+	s.pr.Body = "Delivers the leaksweep predicate change.\n\nBrief: example-stream/15\n"
+	s.files = greenFiles() // touches no trigger path
+	s.install(t)
+	plantBriefRoot(t, privateCIRepo, "example-stream", "15", humanGated)
+	s.reviews = approvalAtHead(t, headSHA)
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitRefused {
+		t.Fatalf("gate:human brief PR without a security pass rc = %d, want %d — the brief risk-classes it",
+			rc, deskkit.ExitRefused)
+	}
+	if m := s.mutated(); len(m) != 0 {
+		t.Fatalf("a gate:human brief PR flipped with no security verdict: %v", m)
+	}
+
+	// The SAME PR WITH a Security-Review: pass at head flips — proving the brief term
+	// demands exactly a pass and does not simply brick a brief-carrying PR.
+	s2 := newStub()
+	s2.pr.Body = "Delivers the leaksweep predicate change.\n\nBrief: example-stream/15\n"
+	s2.files = greenFiles()
+	s2.install(t)
+	plantBriefRoot(t, privateCIRepo, "example-stream", "15", humanGated)
+	bot := reviewerBot(t)
+	pass := reviewInfo{State: "COMMENTED", CommitID: headSHA, Body: "Security-Review: pass",
+		SubmittedAt: "2026-01-01T00:01:00Z"}
+	pass.User.Login = bot
+	s2.reviews = append(approvalAtHead(t, headSHA), pass)
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitOK {
+		t.Fatalf("gate:human brief PR WITH a security pass rc = %d, want 0", rc)
+	}
+	if !s2.flipped() {
+		t.Error("a gate:human brief PR with a security pass at head did not flip")
+	}
+}
+
+// The colon trailer form resolves the same brief, and a `risk: … yes` brief (without
+// gate:human) risk-classes just as a gate:human one does.
+func TestOwningBriefColonFormAndRiskYesRiskClasses(t *testing.T) {
+	riskYes := "---\ngate: model\nrisk: {regulatory: yes, customer: no, irreversible: no, sensitive-data: no}\n---\nbody"
+
+	s := newStub()
+	s.pr.Body = "Brief: example-stream:15\n"
+	s.files = greenFiles()
+	s.install(t)
+	plantBriefRoot(t, privateCIRepo, "example-stream", "15", riskYes)
+	s.reviews = approvalAtHead(t, headSHA)
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitRefused {
+		t.Fatalf("risk:yes brief (colon trailer) without a security pass rc = %d, want %d",
+			rc, deskkit.ExitRefused)
+	}
+	if m := s.mutated(); len(m) != 0 {
+		t.Fatalf("a risk:yes brief PR flipped with no security verdict: %v", m)
+	}
+}
+
+// A NON-risk brief (gate:model, every risk flag no) does NOT risk-class on the brief term:
+// with nothing else risk-classing it, the PR flips on the correctness review alone. This is
+// the counterpart that proves the brief term only WIDENS — it does not brick every
+// brief-carrying PR.
+func TestNonRiskBriefDoesNotRequireASecurityPass(t *testing.T) {
+	nonRisk := "---\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\n---\nbody"
+
+	s := newStub()
+	s.pr.Body = "Brief: example-stream/15\n"
+	s.files = greenFiles()
+	s.install(t)
+	plantBriefRoot(t, privateCIRepo, "example-stream", "15", nonRisk)
+	s.reviews = approvalAtHead(t, headSHA)
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitOK {
+		t.Fatalf("non-risk brief PR rc = %d, want 0 — the brief term only widens", rc)
+	}
+	if !s.flipped() {
+		t.Error("a non-risk brief PR with a clean correctness review did not flip")
+	}
+}
+
+// A DECLARED brief (a `Brief:` trailer is present) that cannot be resolved or read is
+// UNVERIFIABLE, not clean — deskflip must REFUSE the flip on every such error path rather
+// than let it flip on the correctness review alone. Against the pre-fix code each of these
+// FLIPPED (fail-open); each must refuse now. The setup func prepares the filesystem +
+// DESK_ROOTS for the case; the PR touches no trigger path and has a clean correctness
+// approval at head, so the ONLY thing that can refuse it is the brief term.
+func TestDeclaredButUnresolvableBriefRefusesTheFlip(t *testing.T) {
+	humanGated := "---\ngate: human\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}\n---\nbody"
+	cases := []struct {
+		name  string
+		body  string
+		setup func(t *testing.T) // sets DESK_ROOTS and any fixture files
+	}{
+		{
+			name: "glob no-match (declared brief has no file)",
+			body: "Brief: example-stream/99\n",
+			setup: func(t *testing.T) {
+				root := t.TempDir()
+				if err := os.MkdirAll(filepath.Join(root, "docs", "streams", "example-stream"), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				t.Setenv(deskkit.RootsEnv, privateCIRepo+"="+root)
+			},
+		},
+		{
+			name: "no configured root for the repo",
+			body: "Brief: example-stream/15\n",
+			setup: func(t *testing.T) {
+				// A malformed DESK_ROOTS makes ConfiguredRoots refuse, so RootForRepo yields ""
+				// for the target repo — the "no configured root" path — without this test having
+				// to name another repo.
+				t.Setenv(deskkit.RootsEnv, "this-is-not-a-valid-roots-spec")
+			},
+		},
+		{
+			name: "unreadable brief file (path is a directory)",
+			body: "Brief: example-stream/15\n",
+			setup: func(t *testing.T) {
+				root := t.TempDir()
+				if err := os.MkdirAll(filepath.Join(root, "docs", "streams", "example-stream", "brief-15-thing.md"), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				t.Setenv(deskkit.RootsEnv, privateCIRepo+"="+root)
+			},
+		},
+		{
+			name: "malformed Brief: trailer value",
+			body: "Brief: not-a-valid-ref\n",
+			setup: func(t *testing.T) {
+				plantBriefRoot(t, privateCIRepo, "example-stream", "15", humanGated)
+			},
+		},
+		{
+			name: "resolved brief has no parseable frontmatter",
+			body: "Brief: example-stream/15\n",
+			setup: func(t *testing.T) {
+				plantBriefRoot(t, privateCIRepo, "example-stream", "15", "no frontmatter here\ngate: human\n")
+			},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			s := newStub()
+			s.pr.Body = c.body
+			s.files = greenFiles()
+			s.install(t)
+			c.setup(t)
+			s.reviews = approvalAtHead(t, headSHA)
+
+			if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitRefused {
+				t.Fatalf("declared-but-unresolvable brief rc = %d, want %d — an unverifiable brief must refuse",
+					rc, deskkit.ExitRefused)
+			}
+			if m := s.mutated(); len(m) != 0 {
+				t.Fatalf("a declared-but-unresolvable brief flipped with no security verdict: %v", m)
+			}
+		})
 	}
 }
 
