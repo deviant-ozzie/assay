@@ -21,11 +21,11 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 0/11 | 2026-09-07 |  |
 | [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 1/13 | 2026-09-07 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 2/6 | 2026-09-07 |  |
-| [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 5/6 | 2026-09-07 |  |
+| [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 6/6 | 2026-09-07 |  |
 | [quality](docs/streams/quality/README.md) | P2 | active | 15/16 | 2026-09-07 |  |
 | [spec-routing](docs/streams/spec-routing/README.md) | P2 | active | 1/1 | 2026-09-07 |  |
 | [statusgen](docs/streams/statusgen/README.md) | P2 | active | 8/13 | 2026-09-07 |  |
-| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 1/6 | 2026-09-07 |  |
+| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 2/6 | 2026-09-07 |  |
 
 ## Next up
 
@@ -46,14 +46,14 @@ _Held by per-stream caps: 3 brief(s) across 1 stream(s) — top: desk-tools. By 
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (36 desk-actionable of 46 total — 44 at implemented, 2 verified awaiting review)
+## Awaiting verification / review (34 desk-actionable of 44 total — 44 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (36)
+### Desk-actionable (34)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -67,10 +67,10 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 05 [exec:strong] | implemented | 3500 | 5 | — | — | — |
 | derived-board | 04 | implemented | 3000 | 2 | — | — | — |
 | harness-portability | 06 [exec:strong] | implemented | 3000 | 4 | — | — | — |
-| windows-port | 00 | implemented | 3000 | 4 | — | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 2500 | 1 | — | — | — |
-| windows-port | 01 | implemented | 2500 | 3 | — | — | — |
+| windows-port | 00 | implemented | 2500 | 3 | — | — | — |
 | harness-portability | 12 [exec:strong] | implemented | 2000 | 2 | — | — | — |
+| windows-port | 01 | implemented | 2000 | 2 | — | — | — |
 | desk-supervision | 06 | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 05 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 07 [exec:strong] | implemented | 1500 | 1 | — | — | — |
@@ -86,13 +86,11 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 07 | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
-| mistake-proofing | 06 | verified | 1000 | 0 | — | 2026-09-06 opus-4.8[1m]-verifier | — |
 | quality | 15 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 03 | implemented | 1000 | 0 | — | — | — |
 | statusgen | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 06 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 09 | implemented | 1000 | 0 | — | — | — |
-| windows-port | 05 | verified | 1000 | 0 | — | 2026-09-07 assay-verifier | — |
 
 ### Awaiting human gate (4)
 
@@ -101,7 +99,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 01 [exec:strong] | implemented | 7000 | 10 | — | — | — |
 | forge-neutral | 02 [exec:strong] | implemented | 4500 | 5 | — | — | — |
 | harness-portability | 03 | implemented | 4500 | 7 | — | — | — |
-| windows-port | 03 [exec:strong] | implemented | 1500 | 1 | — | — | — |
+| windows-port | 03 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 
 ### Awaiting implementer rework (6)
 
@@ -246,10 +244,6 @@ _None._
 - 04 Record the authorizing human in the release itself (8.6) — todo (wave 1)
 - 06 The auditor one-pager — what Assay is and is not — todo (wave 2)
 
-### mistake-proofing (1 open)
-
-- 06 D1 promoted to a lint obligation — a new check must carry its mutation row — verified (wave 2)
-
 ### quality (1 open)
 
 - 15 learned riskscore graduation — JIT defect-prediction model — implemented (wave 3)
@@ -262,13 +256,12 @@ _None._
 - 09 opt-in telemetry — anonymized fleet-drift corpus (off by default) — implemented (wave 1)
 - 11 DORA/insights hybrid — DevLake commodity split — implemented (wave 1)
 
-### windows-port (5 open)
+### windows-port (4 open)
 
 - 00 Build-tag split for the unix-only syscall sites — implemented (wave 0)
 - 01 Release build matrix — windows/amd64 + windows/arm64 + sha256s — implemented (wave 1)
 - 03 Windows install path — PowerShell-vs-Go-installer fork, then build — implemented (wave 2)
 - 04 Windows CI leg — statusgen --lint + a desk-verb smoke on Windows — todo (wave 2)
-- 05 Adoption-doc delta — the Windows adopter walkthrough — verified (wave 3)
 
 ## Done briefs
 
@@ -316,13 +309,14 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 - 02 Align three shipped disclosures with the code they describe (B9) — done (wave 0)
 - 05 Records control and retention, stated once (7.5.3) — done (wave 1)
 
-### mistake-proofing (5 done)
+### mistake-proofing (6 done)
 
 - 01 Cross-read a brief's declared paths against the risk classifier (B3) — done (wave 0)
 - 02 Dereference named identifiers, not just backticked paths (B4) — done (wave 0)
 - 03 Typed Verify-row obligation classes, derived from the diff shape (B2, D7) — done (wave 1)
 - 04 Derive the authoring guidance's enforcement-status claims from the lint (B9) — done (wave 1)
 - 05 `newbrief` — the scaffolder as the authoring front door (B1) — done (wave 2)
+- 06 D1 promoted to a lint obligation — a new check must carry its mutation row — done (wave 2)
 
 ### quality (15 done)
 
@@ -357,10 +351,11 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 - 12 `homed-in: <owner/repo>` — exclude a re-homed brief from THIS board's Next-up, keep its tracking row, carry the target repo — done (wave 1)
 - 13 cadenced roadmap artifacts (`--cadence weekly/monthly`) — done (wave 1)
 
-### windows-port (1 done)
+### windows-port (2 done)
 
 - 02 Portability audit — enumerate + triage the shell-assuming surfaces — done (wave 0)
+- 05 Adoption-doc delta — the Windows adopter walkthrough — done (wave 3)
 
 ## Totals
 
-**15** streams (**15** active, **0** paused) · **49/139** briefs done · completed initiatives: see `docs/archive/`
+**15** streams (**15** active, **0** paused) · **51/139** briefs done · completed initiatives: see `docs/archive/`
