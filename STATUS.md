@@ -46,14 +46,14 @@ _Held by per-stream caps: 3 brief(s) across 1 stream(s) — top: desk-tools. By 
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (39 desk-actionable of 46 total — 46 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (36 desk-actionable of 46 total — 44 at implemented, 2 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (39)
+### Desk-actionable (36)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -66,17 +66,14 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 04 [exec:strong] | implemented | 3500 | 5 | — | — | — |
 | harness-portability | 05 [exec:strong] | implemented | 3500 | 5 | — | — | — |
 | derived-board | 04 | implemented | 3000 | 2 | — | — | — |
-| desk-containers | 03 | implemented | 3000 | 4 | — | — | — |
 | harness-portability | 06 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | windows-port | 00 | implemented | 3000 | 4 | — | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 2500 | 1 | — | — | — |
-| iso-9001 | 01 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | windows-port | 01 | implemented | 2500 | 3 | — | — | — |
 | harness-portability | 12 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | desk-supervision | 06 | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 05 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 07 [exec:strong] | implemented | 1500 | 1 | — | — | — |
-| windows-port | 03 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desk-supervision | 04 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-supervision | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 01 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -89,27 +86,30 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 07 | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
-| mistake-proofing | 06 | implemented | 1000 | 0 | — | — | — |
+| mistake-proofing | 06 | verified | 1000 | 0 | — | 2026-09-06 opus-4.8[1m]-verifier | — |
 | quality | 15 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 03 | implemented | 1000 | 0 | — | — | — |
 | statusgen | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 06 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 09 | implemented | 1000 | 0 | — | — | — |
-| windows-port | 05 | implemented | 1000 | 0 | — | — | — |
+| windows-port | 05 | verified | 1000 | 0 | — | 2026-09-07 assay-verifier | — |
 
-### Awaiting human gate (3)
+### Awaiting human gate (4)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
 | forge-neutral | 01 [exec:strong] | implemented | 7000 | 10 | — | — | — |
 | forge-neutral | 02 [exec:strong] | implemented | 4500 | 5 | — | — | — |
 | harness-portability | 03 | implemented | 4500 | 7 | — | — | — |
+| windows-port | 03 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 
-### Awaiting implementer rework (4)
+### Awaiting implementer rework (6)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
+| desk-containers | 03 | implemented | 3000 | 4 | — | — | — |
 | forge-neutral | 03 [exec:strong] | implemented | 3000 | 2 | — | — | — |
+| iso-9001 | 01 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | desk-tools | 07 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 11 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -248,7 +248,7 @@ _None._
 
 ### mistake-proofing (1 open)
 
-- 06 D1 promoted to a lint obligation — a new check must carry its mutation row — implemented (wave 2)
+- 06 D1 promoted to a lint obligation — a new check must carry its mutation row — verified (wave 2)
 
 ### quality (1 open)
 
@@ -268,7 +268,7 @@ _None._
 - 01 Release build matrix — windows/amd64 + windows/arm64 + sha256s — implemented (wave 1)
 - 03 Windows install path — PowerShell-vs-Go-installer fork, then build — implemented (wave 2)
 - 04 Windows CI leg — statusgen --lint + a desk-verb smoke on Windows — todo (wave 2)
-- 05 Adoption-doc delta — the Windows adopter walkthrough — implemented (wave 3)
+- 05 Adoption-doc delta — the Windows adopter walkthrough — verified (wave 3)
 
 ## Done briefs
 
