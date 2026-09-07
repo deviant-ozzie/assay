@@ -236,13 +236,32 @@ func flip(o flipOpts) error {
 			"condition %s: checks at %s are not positively green (a check has not completed). Not-yet-green "+
 				"is could-not-verify, never green.", condChecksGreen, short(head)), nil)
 	case ciEmpty:
-		if deskkit.CIRequired(repo) {
-			return deskkit.Unverifiable(fmt.Sprintf(
-				"condition %s: no check rollup at %s on CI-required repo %s — an absent rollup on a repo that "+
-					"runs CI means the checks have not reported yet, which cannot be read as green.",
-				condChecksGreen, short(head), repo), nil)
+		// An ABSENT rollup is the config-vs-reality fork. The roster's coarse ci-tag says
+		// whether the repo "runs CI" — but a repo can run CI without REQUIRING any check to
+		// merge (checks that never fire on App-authored PRs, or a branch with no required
+		// checks at all), and GitHub itself would merge such a PR. So the gate keys on what the
+		// forge ACTUALLY enforces: the required-status-check set on the PR's base branch.
+		//
+		//   required set NON-EMPTY  → the absent rollup means those checks have not reported;
+		//                             that is not green (could-not-verify), so refuse.
+		//   required set EMPTY      → nothing gates the merge on a check, so the absent rollup
+		//                             is everything there will ever be — GREEN.
+		//   could-not-read the set  → fail CLOSED: refuse rather than assume none required.
+		required, rerr := readRequiredChecks(o, fg, fr, pr.BaseRef, head)
+		if rerr != nil {
+			return rerr
 		}
-		// A repo with no PR CI at all: an empty rollup is everything there will ever be.
+		if len(required) > 0 {
+			return deskkit.Unverifiable(fmt.Sprintf(
+				"condition %s: no check rollup at %s, but %s requires %d status check(s) on %q (%s) — an absent "+
+					"rollup when checks ARE required means they have not reported yet, which cannot be read as "+
+					"green.", condChecksGreen, short(head), repo, len(required), pr.BaseRef,
+				strings.Join(required, ", ")), nil)
+		}
+		// The base branch requires no status checks: an empty rollup is everything there will
+		// ever be, and nothing GitHub enforces is missing. Flip is allowed on this condition.
+		o.say("%s: no rollup at %s and %s requires no status checks on %q — nothing gates the merge on a check",
+			condChecksGreen, short(head), repo, pr.BaseRef)
 	case ciGreen:
 	}
 	o.say("%s OK: %d check(s) green at %s", condChecksGreen, len(checks), short(head))
@@ -583,15 +602,23 @@ func checkReviewerApproved(reviewerLogin string, reviews []reviewInfo, head stri
 
 // checkSecurityVerdict runs the security lane.
 //
-// TWO RULES, and the first is unconditional. An explicit `Security-Review: fail` at head
-// is a reviewer's deliberate RETRACTION, and whether the diff happens to trigger automatic
+// TWO RULES, and the first is unconditional. An explicit `Security-Review: fail` is a
+// reviewer's deliberate RETRACTION, and whether the diff happens to trigger automatic
 // risk-classification has nothing to do with whether that retraction was made — so it
-// blocks every flip, risk-classed or not. The second rule is the risk-classed requirement:
-// a PR that IS risk-classed needs an affirmative pass at the same head, and absence is
-// never a pass.
+// blocks every flip, risk-classed or not. It also STANDS across a content-preserving head
+// move (#361): the fail is read from securityVerdictStanding, which does not key a fail to
+// the current head, so a resync that leaves the flagged code unchanged cannot launder it.
+// The second rule is the risk-classed requirement: a PR that IS risk-classed needs an
+// affirmative pass AT THE CURRENT head, and absence is never a pass.
 //
-// A repo whose visibility risk-classes it (a public repo always does) is risk-classed
-// unconditionally — no diff reading required, and no way for a quiet path to opt out.
+// RISK CLASSIFICATION IS UNIONED, AND EVERY TERM ONLY WIDENS (#361 item 3). A PR is
+// risk-classed if its repo visibility risk-classes it (a public repo always does — no diff
+// reading required), OR it carries the security-surface label (surface:core), OR a changed
+// path hits the compiled trigger set. Adding the label term is safe precisely because it is
+// additive: the label's PRESENCE can only ADD scrutiny, and its ABSENCE never waives the
+// gate (the path and visibility terms still decide). That is the one direction the label
+// signal may be used in — riskpath.go warns that a label read that could WAIVE the gate
+// fails open on a mislabeled PR; a term that only tightens has no such failure mode.
 //
 // The changed-file list arrives as an EXPLICIT PARAMETER rather than as a field of
 // prInfo, and that is the shape of the fix for the truncating read. `gh pr view --json
@@ -604,16 +631,21 @@ func checkReviewerApproved(reviewerLogin string, reviews []reviewInfo, head stri
 // longer has the field: the only value that can reach this gate is the one the caller
 // walked to completion (readChangedFiles), and the compiler is what enforces it.
 func checkSecurityVerdict(o flipOpts, repo string, pr prInfo, files []fileInfo, reviews []reviewInfo, reviewerLogin, head string) error {
-	verdict := securityVerdictAtHead(reviews, reviewerLogin, head)
+	verdict := securityVerdictStanding(reviews, reviewerLogin, head)
 	if verdict == secFail {
 		return deskkit.Refused(fmt.Sprintf(
-			"condition %s: an App review at head %s carries `Security-Review: fail` — the security verdict is "+
-				"RETRACTED. This blocks the flip whether or not the PR is risk-classed; clear it with a later "+
-				"`Security-Review: pass` at this head.", condSecurityVerdict, short(head)))
+			"condition %s: an App review carries a standing `Security-Review: fail` — the security verdict is "+
+				"RETRACTED. This blocks the flip whether or not the PR is risk-classed, and a content-preserving "+
+				"head move (a resync) does NOT clear it; clear it only with a later `Security-Review: pass` at the "+
+				"current head %s.", condSecurityVerdict, short(head)))
 	}
 
 	riskClassed := deskkit.VisibilityRiskClassed(repo)
 	reason := "repo visibility"
+	if !riskClassed && surfaceCoreLabeled(pr.Labels) {
+		riskClassed = true
+		reason = "carries the " + deskkit.SurfaceCoreLabel + " security-surface label"
+	}
 	if !riskClassed {
 		// Reconcile the files walk against the forge's OWN count. A walk that stopped
 		// early otherwise believes it saw the whole diff — pad the PR with enough files
@@ -656,6 +688,27 @@ const (
 	secFail
 )
 
+// surfaceCoreLabeled reports whether the PR carries the security-surface label
+// (deskkit.SurfaceCoreLabel, "surface:core") — applied when a changed path matched a
+// declared core surface. It is the label half of risk classification (#361 item 3): a
+// security-sensitive PR must be risk-classed even when its sensitive paths are not in the
+// compiled path-trigger set.
+//
+// ADDITIVE ONLY. This is read exclusively to ADD risk classification (more scrutiny). The
+// ABSENCE of the label is never consulted to waive the gate — the visibility and path terms
+// still decide — so the fail-open direction riskpath.go warns of (a label read that could
+// WAIVE the gate on a mislabeled PR) is not reachable here. surface:std, the "no core
+// surface touched" label, deliberately does NOT risk-class: it merely declines to add,
+// never subtracts.
+func surfaceCoreLabeled(labels []labelInfo) bool {
+	for _, l := range labels {
+		if strings.EqualFold(strings.TrimSpace(l.Name), deskkit.SurfaceCoreLabel) {
+			return true
+		}
+	}
+	return false
+}
+
 // hasSecurityMarker reports whether a body carries EITHER security marker, using the
 // canonical readers. It is deliberately not a third parser: a re-implemented marker read
 // is how two tools came to disagree about whether a retraction existed.
@@ -663,26 +716,47 @@ func hasSecurityMarker(body string) bool {
 	return deskkit.HasSecurityReviewPass(body) || deskkit.HasSecurityReviewFail(body)
 }
 
-// securityVerdictAtHead reduces every reviewer-App security verdict AT HEAD to one
-// governing verdict. Reviews arrive in ascending submitted order, so the reduction is
-// ORDER-SENSITIVE: the last verdict at head governs, and a `pass` later retracted by a
-// `fail` at the same head is NOT green. Returning the verdict rather than a bool is what
-// keeps "nobody spoke" and "the verdict is fail" distinguishable — collapsing both to
-// false is what made an explicit retraction indistinguishable from silence.
-func securityVerdictAtHead(reviews []reviewInfo, reviewerLogin, head string) secVerdict {
+// securityVerdictStanding reduces every reviewer-App security verdict to one governing
+// verdict, with a DELIBERATE ASYMMETRY between the two verdict kinds across a head move
+// (#361).
+//
+// A `Security-Review: fail` is a reviewer's retraction of the reviewed CODE, not of a
+// particular commit sha. A content-preserving head move — a resync, a merge-from-main, any
+// re-trigger that leaves the flagged code byte-identical — moves the head sha WITHOUT
+// touching what the reviewer flagged, so it must NOT launder the fail. A fail therefore
+// STANDS regardless of the commit it was posted against: the only things that clear it are
+// a later `Security-Review: pass` AT THE CURRENT HEAD, or a genuine content change that
+// makes a reviewer re-review and pass. A bare head-sha change clears nothing. This is the
+// factor-1 fix: before it, a fail whose commit_id predated the current head was silently
+// treated as not-current and the standing retraction was flipped past.
+//
+// A `pass`, in contrast, GRANTS only by binding to the CURRENT head. New code needs a fresh
+// review, so a pass whose commit predates the head neither stands as a pass nor clears a
+// standing fail — the empty string is not a commit either. The asymmetry is the whole
+// point: a head move is fail-SAFE for a pass (it stops granting) and must be fail-safe for a
+// fail too (it must keep blocking).
+//
+// Reviews arrive in ascending submitted order, so the reduction is ORDER-SENSITIVE: the last
+// applicable verdict governs, and a `pass` at head later retracted by a `fail` is NOT green.
+// Returning the verdict rather than a bool keeps "nobody spoke" and "the verdict is fail"
+// distinguishable — collapsing both to false is what made an explicit retraction
+// indistinguishable from silence.
+func securityVerdictStanding(reviews []reviewInfo, reviewerLogin, head string) secVerdict {
 	out := secNone
 	for _, r := range reviews {
-		if !deskkit.SameActor(r.User.Login, reviewerLogin) || r.CommitID != head {
+		if !deskkit.SameActor(r.User.Login, reviewerLogin) {
 			continue
 		}
 		switch {
 		case deskkit.HasSecurityReviewFail(r.Body):
+			// A fail STANDS whatever commit it names: a head move that did not touch the
+			// reviewed code cannot clear a retraction. Every reason to doubt a fail is a
+			// reason to keep blocking.
 			out = secFail
 		case deskkit.HasSecurityReviewPass(r.Body):
-			// A verdict GRANTS only by binding to the commit it was issued against, and
-			// the empty string is not a commit. A FAIL is not subject to the same test:
-			// every reason to doubt a retraction is a reason to keep blocking.
-			if head != "" {
+			// A pass GRANTS only at the current head; an empty head is not a commit, and a
+			// pass at an earlier head neither grants nor clears a standing fail.
+			if head != "" && r.CommitID == head {
 				out = secPass
 			}
 		}
@@ -788,6 +862,7 @@ type prInfo struct {
 	IsDraft      bool
 	Mergeable    string
 	HeadRefOid   string
+	BaseRef      string
 	ChangedFiles int
 	Labels       []labelInfo
 
@@ -923,6 +998,7 @@ func readPR(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo) (prInfo, error) 
 		IsDraft:      ch.Draft,
 		Mergeable:    ch.Mergeable,
 		HeadRefOid:   ch.HeadSHA,
+		BaseRef:      ch.BaseRef,
 		ChangedFiles: ch.ChangedFiles,
 		Labels:       labels,
 		change:       ch,
@@ -962,6 +1038,34 @@ func readChecks(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo, head string)
 		})
 	}
 	return out, nil
+}
+
+// readRequiredChecks reads the status checks branch protection REQUIRES on the change's base
+// branch — the set that decides whether an ABSENT rollup is green or could-not-verify.
+//
+// It FAILS CLOSED in both directions the gate cares about. An empty base branch is refused
+// before the read (a required-set read against no branch is meaningless, and meaningless is
+// could-not-check). A read error is could-not-check and refuses UNVERIFIABLE, so a permission
+// or transport failure NEVER lets an absent rollup pass as green — the whole point of keying
+// on the real required set rather than the roster tag is undone if "could not read it" reads
+// as "nothing required". A 404 (no protection / no required checks) is NOT an error at the
+// backend; it comes back as an empty set, which the caller reads as green.
+func readRequiredChecks(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo, base, head string) ([]string, error) {
+	if strings.TrimSpace(base) == "" {
+		return nil, deskkit.Unverifiable(fmt.Sprintf(
+			"condition %s: no rollup at %s and PR #%d reports no base branch, so which branch's required "+
+				"checks would decide the absent rollup cannot be established — could-not-check is never green.",
+			condChecksGreen, short(head), o.pr), nil)
+	}
+	required, err := fg.RequiredStatusChecks(fr, base)
+	if err != nil {
+		return nil, deskkit.Unverifiable(fmt.Sprintf(
+			"condition %s: cannot read the required status checks on %q (%s) — with an absent rollup the flip "+
+				"depends on knowing what is required, and a required-set that could not be read is "+
+				"could-not-check, never 'nothing required'.",
+			condChecksGreen, base, firstLine(err.Error())), err)
+	}
+	return required, nil
 }
 
 func readReviews(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo) ([]reviewInfo, error) {

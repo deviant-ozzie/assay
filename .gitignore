@@ -2,6 +2,7 @@
 /statusgen/statusgen
 /tools/freshness/freshness
 /tools/pairedversions/pairedversions
+/tools/claimguard/claimguard
 /qualgen/qualgen
 *.exe
 *.test
