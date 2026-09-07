@@ -95,6 +95,22 @@ Pre-mortem → detection map:
 | A fragment is added with no real content (gate satisfiable by `touch`) | row 5 checks non-empty, and `changelog-check` (CI) additionally rejects an empty fragment |
 
 ## Evidence
+### Non-implementer verifier run — VERIFY: PASS (5/5 rows, offline) — 2026-09-06 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `67abbac`
+
+Runner ≠ implementer. Isolated worktree off origin/main. Offline (`KUBECONFIG=/dev/null`). Frontmatter: `gate: model`, all risk `no`, `irreversible: no`. Implementing commit `9cce854`.
+
+| # | command | expected | exit / observed | Date | Runner |
+|---|---------|----------|-----------------|------|--------|
+| 1 | tools/skillslint go run . --root ../.. | exit 0; the five named checks PASS | exit 0 — skillslint / hidden-chars / house-values / guardrails / enforcement-block all PASS (6 advisory context-bloat NOTICEs, exit stays 0) | 2026-09-06 | opus-4.8[1m]-verifier |
+| 2 | grep -c -iE 'independent read' plugins/assay/skills/intake-desk/SKILL.md | ≥1 | exit 0, count 1 | 2026-09-06 | opus-4.8[1m]-verifier |
+| 3 | grep -c -iE 'confirmed-current' plugins/assay/skills/verify-desk/SKILL.md | ≥1 | exit 0, count 1 | 2026-09-06 | opus-4.8[1m]-verifier |
+| 4 | git diff origin/main --stat plugins/assay/skills/ | only intake-desk + verify-desk SKILL.md touched | empty on merged main (HEAD==origin/main); intent cross-checked via git show 9cce854 — exactly intake-desk (+18) + verify-desk (+9), no other skill body | 2026-09-06 | opus-4.8[1m]-verifier |
+| 5 | test -s changelog/intake-desk-cross-repo-remote-verify.md | present | exit 0, present (899 bytes, real content) | 2026-09-06 | opus-4.8[1m]-verifier |
+
+`RISK-VALUE: N/A — enumeration over commit 9cce854 (two skill-body prose edits + one changelog fragment) found no literal constant/bound/threshold; the additions are prose, the only literals are illustrative doc command strings, none inside a guard. Reversible prose amendment; irreversible:no.`
+
+**VERIFY: PASS** — all 5 Verify rows PASS on merged main `67abbac`; RISK-VALUE N/A. `gate: model`, all risk `no` — the deliverable verifies clean.
+
 <!-- appended at implementation time: one witness row per Verify row —
      (command, exit code, output line(s), date, runner). -->
 
