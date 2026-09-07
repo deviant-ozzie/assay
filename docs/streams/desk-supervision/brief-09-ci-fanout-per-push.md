@@ -54,7 +54,11 @@ files:
   reads the `paths-ignore` list out of the staged workflows and asserts GitHub's rule on
   five diff shapes, three of which must NOT skip.
 - `docs/streams/desk-supervision/README.md` — the Briefs row and the wave block.
-- `changelog/ci-per-push-fanout.md` — the fragment.
+- `changelog/ci-per-push-fanout.md` (planned) — the fragment. Marked `(planned)` because a
+  release roll AGGREGATES every fragment into the dated `CHANGELOG.md` section and CLEARS
+  `changelog/` in the same commit, so a fragment path is transient by design: it exists only
+  between the brief's own PR and the next release cut. This one was consumed by the v0.26.0
+  roll.
 
 prescribes (applied by a human copy, NOT written by this brief's diff):
 `.github/workflows/ci.yml`, `plugin-drift.yml`, `assay-statusgen.yml`, `assay-qualgen.yml`,
@@ -229,7 +233,7 @@ number rather than estimated into it.
 6. Touch nothing else in `.github/workflows/`. In particular `leaksweep-control.yml` and
    `leaksweep-pattern.yml` are not copied, not filtered, and not given a concurrency group.
 
-7. Add `changelog/ci-per-push-fanout.md`, and add the row + wave entry for this brief to
+7. Add `changelog/ci-per-push-fanout.md` (planned), and add the row + wave entry for this brief to
    `docs/streams/desk-supervision/README.md`.
 
 ### Pre-mortem → detection map
@@ -278,6 +282,30 @@ docs-only by construction (its own lane refuses anything outside `docs/streams/`
      (command, exit code, output line(s) or hash, date, runner).
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
+
+### Non-implementer verifier run — VERIFY: BLOCKED (6 offline rows PASS; 6 landing-dependent rows UNRUN pending human workflows-copy) — HELD at implemented — 2026-09-05 opus-4.8[1m]-verifier (verify-desk dispatch), medici-finance/assay merged main 55bb04c
+
+Runner != implementer. Offline envelope (KUBECONFIG=/dev/null). gate: model; risk {regulatory:no, customer:no, irreversible:no, sensitive-data:no}. Two-phase deliverable: the five workflow files are STAGED under tools/ci-load/activation/ and differ from the landed .github/workflows/ — the implementing identity holds no workflows permission, so activation is a human copy. Rows that read the landed tree / a live class-A PR are unreachable until that copy lands.
+
+| # | command | expected | observed (exit + key line) | date · runner |
+|---|---------|----------|----------------------------|---------------|
+| 1 | PR/branch run-list, ci absent (before/after on landed tree) | measurement | UNRUN — human workflows-copy not landed; no post-landing tree or class-A PR to measure | 2026-09-05 · opus-4.8[1m]-verifier |
+| 2 | commit status + rulesets (leak-sweep present, ruleset named) | present | UNRUN — requires landed head + live GH API (offline) | 2026-09-05 · opus-4.8[1m]-verifier |
+| 3 | python3 tools/ci-load/pathsemantics.py | exit 0 PASS; mixed/go-only/plugin-only skipped=False | exit 0 PASS; both workflows mixed=False go-only=False plugin-only=False docs-only=True status-regen=True | 2026-09-05 · opus-4.8[1m]-verifier |
+| 3b | mutate all( to any(, re-run, restore | exit 1 on mutant, exit 0 after restore | exit 1 FAIL mixed skipped=True (want False) both; restored exit 0 PASS; git diff clean | 2026-09-05 · opus-4.8[1m]-verifier |
+| 4 | byte-diff leak workflows across landing commit | exit 0, no output | UNRUN — derives base from last commit to touch ci.yml; no landing commit yet | 2026-09-05 · opus-4.8[1m]-verifier |
+| 5 | grep cancel-in-progress the landed workflows | exactly two event-conditioned settings | UNRUN — reads landed tree; pre-landing count of event-conditioned settings = 0 | 2026-09-05 · opus-4.8[1m]-verifier |
+| 6 | go test ./cmd/deskboard -run TestWouldFire then -run TestZeroCI | exit 0 twice | TestWouldFire 0 (0.54s); TestZeroCI 0 (23.2s); both ok | 2026-09-05 · opus-4.8[1m]-verifier |
+| 7 | PR statusCheckRollup length >= 4 | >= 4 | UNRUN — requires landed tree + live class-A PR (offline) | 2026-09-05 · opus-4.8[1m]-verifier |
+| 8 | staged vs landed byte-diff (5 files) | exit 0, no output | UNRUN — all five staged files DIFFER from landed (identity asserted only AFTER the human copy) | 2026-09-05 · opus-4.8[1m]-verifier |
+| 9 | yaml structure of the staged files | 5 lines; specified shapes | exit 0; 5 lines exactly as specified | 2026-09-05 · opus-4.8[1m]-verifier |
+| 10 | statusgen --root .. --lint | exit 0, no PROBLEM naming ds/09 or ci-load | exit 0; zero PROBLEM for brief/ci-load; only expected NOTICE risk-files-crossread + unrelated notices | 2026-09-05 · opus-4.8[1m]-verifier |
+| 11 | statusgen --consumers block | 4 entries; activation/*.yml CORROBORATED; 3 out-of-scope UNCHECKED | exit 0 (base scoped to brief); CORROBORATED tools/ci-load/activation/*.yml; 3 UNCHECKED by design; 1 corroborated 0 disproved 3 unchecked | 2026-09-05 · opus-4.8[1m]-verifier |
+
+**VERIFY: BLOCKED — HELD at implemented.** All 6 no-landing rows PASS (3, 3b, 6, 9, 10, 11); the 6 landing-dependent rows (1, 2, 4, 5, 7, 8) are UNRUN because the human workflows-permission copy of the five staged files into .github/workflows/ has not been performed and no class-A Evidence PR exists to measure. No row FAILs — blocked-on-human-activation, not FAIL. Advancing to verified requires the copy to land, then rows 1,2,4,5,7,8 re-run.
+
+RISK-VALUE: DERIVED — evidence-automerge enable-if login = assay-verifier-app[bot] @ tools/ci-load/activation/evidence-automerge.yml:93 — must equal the verify-desk App that authors Evidence PRs (the same identity kept in sync with the EVIDENCE_AUTHOR literal); fail-safe — a pre-filter in front of an unchanged default-deny in-job guard, so drift narrows a lane or is declined, never widens automerge authority.
+RISK-VALUE: DERIVED — ci/plugin-drift paths-ignore = the documentary paths (docs, changelog, CHANGELOG.md, STATUS.md) @ tools/ci-load/activation/ci.yml:57-66 — exactly the paths no build/test/plugin job reads; rows 3/3b prove mixed/go-only/plugin-only diffs still run and the leak/security workflows are unfiltered, so the required leak-sweep check is unaffected. Reversible knob.
 
 ## Review
 

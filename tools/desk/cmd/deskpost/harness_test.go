@@ -667,9 +667,9 @@ func setupFake(t *testing.T) (*fakeGH, *bytes.Buffer) {
 	f.srv = httptest.NewServer(http.HandlerFunc(f.handler))
 	t.Cleanup(f.srv.Close)
 
-	oldBase := apiBaseURL
-	apiBaseURL = f.srv.URL
-	t.Cleanup(func() { apiBaseURL = oldBase })
+	oldBase := forgeAPIBase
+	forgeAPIBase = f.srv.URL
+	t.Cleanup(func() { forgeAPIBase = oldBase })
 
 	var errBuf bytes.Buffer
 	oldOut, oldErr := stdout, stderr

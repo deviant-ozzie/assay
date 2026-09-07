@@ -37,6 +37,17 @@ installation-coverage listing for `desktoken`, a stale-claim probe with branch l
 an `--explain`, an operator-supplied home on `deskdispatch --dry-run`, and a block-level
 no-op in `deskevidence`.
 
+Briefs 17–19 are the three trust-gate rulings recorded 2026-09-06. Two of them RELAX a control
+and one TIGHTENS one, and they are authored together because they answer one question between
+them — where the human belongs in a public-repo loop. 17 and 18 move the human decision off the
+per-item path (the board's author bar, the per-write `+1`) and onto the two surfaces that were
+always the real controls: the configured trust roster, and the human merge. 19 moves in the
+opposite direction, closing a fail-OPEN in `verifyloop plan` where the most serious risk answer
+a brief can carry — `irreversible` — routed it to a dispatchable tier while its milder siblings
+were correctly held back. Each carries a single-point-of-failure note naming the one control it
+leaves standing and the layers behind it; each Verify table carries a negative control, because
+a relaxation verified only on the cases it means to admit has verified nothing.
+
 ## Briefs
 
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
@@ -57,6 +68,10 @@ no-op in `deskevidence`.
 | 14 | [bodycheck — three measured false-positive classes into the negative corpus, plus `--explain`](brief-14-bodycheck-negative-classes-and-explain.md) | 1 | M | todo | — | — |
 | 15 | [`deskdispatch --dry-run --worktree <path>` — render the prompt against an operator-supplied home](brief-15-deskdispatch-dryrun-worktree.md) | 1 | S | todo | — | — |
 | 16 | [`deskevidence` — an Evidence block equivalent to one already standing is a no-op, not a second block](brief-16-deskevidence-block-equivalence-noop.md) | 1 | S | todo | — | — |
+| 17 | [One trust bar for public-repo authors — `deskboard` classifies on the same predicate `deskpost` gates on](brief-17-one-trust-bar-public-authors.md) | 1 | M | todo | — | — |
+| 18 | [Public-repo write gate — an allowed-repos entry tagged `:public` authorizes outward writes, replacing the per-item `+1` reaction check](brief-18-allowed-public-repos-write-gate.md) | 1 | M | todo | — | — |
+| 19 | [`verifyloop plan` fails safe on risk — any risk answer `yes` routes to ROUTE-HUMAN, and the Evidence-only lane says so](brief-19-verifyloop-risk-fail-safe-routing.md) | 1 | M | todo | — | — |
+| 20 | [Cross-repo triage/verify evidence binds to the remote — a sibling checkout must be cross-checked, not trusted as-is](brief-20-cross-repo-remote-verify.md) | 1 | S | implemented | — | — |
 
 ## Critical path
 None. Each brief is independent and self-contained. The soft ordering their source streams
@@ -67,7 +82,7 @@ brief's Dependencies note.
 
 ## Dependency waves
 - **Wave 1** — desk-tools/01, /02, /03, /04, /05, /06, /07, /08, /09, /10, /11, /12, /13, /14,
-  /15, /16 (all independent; parallelizable). desk-tools/06
+  /15, /16, /17, /18, /19, /20 (all independent; parallelizable). desk-tools/06
   is a design-direction brief: it records the direction and names a follow-on implementation
   brief-set, implementing none of it.
 
