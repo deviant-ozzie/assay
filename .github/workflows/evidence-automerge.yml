@@ -229,16 +229,27 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
         run: |
           set -uo pipefail
-          # Already enabled (a second synchronize, or a review after a push) is a
-          # benign replay: GitHub answers with a "Pull request Auto merge is not
-          # allowed ... already enabled" style error. Treat that ONE case as
-          # success; every other failure is a real failure and reddens the run.
+          # Two failures from this mutation are benign and must NOT redden the run:
+          #   1. Already enabled (a second synchronize, or a review after a push) is
+          #      a benign replay: GitHub answers with a "... already enabled" style
+          #      error. The request is redundant, not wrong.
+          #   2. Repository auto-merge is turned OFF at the repo level: GitHub answers
+          #      "Auto merge is not allowed for this repository". Enabling auto-merge
+          #      is an OPTIMISATION, not the merge itself — the required review and
+          #      status checks still gate the merge, and a human can merge directly —
+          #      so a repo that has the setting off is a benign skip, not a failure.
+          #      (Turning the setting on is the other resolution; see #579.)
+          # Every OTHER failure is a real failure and reddens the run.
           out=$(gh api graphql \
             -f query='mutation($pr:ID!){enablePullRequestAutoMerge(input:{pullRequestId:$pr,mergeMethod:MERGE}){pullRequest{number autoMergeRequest{enabledAt}}}}' \
             -F pr="$PR_NODE_ID" 2>&1) || {
               printf '%s\n' "$out"
               if printf '%s' "$out" | grep -qi 'already enabled'; then
                 echo "auto-merge was already enabled on PR ${PR} — no-op"
+                exit 0
+              fi
+              if printf '%s' "$out" | grep -qi 'not allowed for this repository'; then
+                echo "repository auto-merge is disabled — skipping enable on PR ${PR} (benign; see #579)"
                 exit 0
               fi
               echo "::error::could not enable auto-merge on PR ${PR}"
