@@ -11,6 +11,8 @@ description: Run the intake-desk — the generic front door of the process desk 
 > bindings, and its own escalation labels. Those pieces are project config, not part of this
 > portable core.
 
+> Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, and role/repo coverage — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
+
 The **intake-desk** is the generic front door of the process-desk pipeline — the first of the four
 desks (`intake-desk → worker-desk → pr-review-desk → verify-desk`). Where pr-review-desk watches
 work *leaving* the system (PRs → ready), this desk watches work *arriving* from **any** source:

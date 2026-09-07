@@ -2,11 +2,13 @@ package deskkit
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -63,6 +65,12 @@ type glServer struct {
 	createIssue  map[string]any
 	updateMR     map[string]any
 	labelEvents  []map[string]any
+	// repoFile is the Repository-Files GET payload (ReadFile / WriteFile idempotency read),
+	// keyed by the ESCAPED file path segment. Absent → 404.
+	repoFile map[string]map[string]any
+	// createFileResp / updateFileResp are the Repository-Files write responses (FileInfo).
+	createFileResp map[string]any
+	updateFileResp map[string]any
 	// labelCreateStatus, when set, is the status the project-label create route returns
 	// instead of 201. GitLab answers a duplicate name with 409 (or 400 on older versions),
 	// both of which mean the ensure's post-condition already holds.
@@ -102,6 +110,7 @@ var (
 	lMRLabelEvts  = regexp.MustCompile(`/merge_requests/[0-9]+/resource_label_events$`)
 	lMRNote1      = regexp.MustCompile(`/merge_requests/[0-9]+/notes/[0-9]+$`)
 	lProjLabels   = regexp.MustCompile(`^/api/v4/projects/[^/]+/labels$`)
+	lRepoFile     = regexp.MustCompile(`^/api/v4/projects/[^/]+/repository/files/[^/]+$`)
 )
 
 func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
@@ -122,6 +131,28 @@ func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
 	page := r.URL.Query().Get("page")
 
 	switch {
+	case lRepoFile.MatchString(path):
+		// Repository Files API: GET reads, POST creates, PUT updates. The file path is the
+		// last segment, which the client library escapes fully (a "." becomes %2E), so it is
+		// unescaped before the fixture lookup.
+		seg, _ := url.PathUnescape(path[strings.LastIndex(path, "/")+1:])
+		switch r.Method {
+		case http.MethodGet:
+			f, ok := s.repoFile[seg]
+			if !ok {
+				w.WriteHeader(http.StatusNotFound)
+				enc(map[string]any{"message": "404 File Not Found"})
+				return
+			}
+			enc(f)
+		case http.MethodPost:
+			w.WriteHeader(http.StatusCreated)
+			enc(s.createFileResp)
+		case http.MethodPut:
+			enc(s.updateFileResp)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
 	case r.Method == http.MethodGet && lMRLabelEvts.MatchString(path):
 		enc(s.labelEvents)
 	case r.Method == http.MethodPut && lMRNote1.MatchString(path):
@@ -209,6 +240,9 @@ func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	}
 }
+
+// glB64 renders s as the base64 the Repository Files API returns for file content.
+func glB64(s string) string { return base64.StdEncoding.EncodeToString([]byte(s)) }
 
 // glNotes builds n synthetic non-system notes starting at the given id.
 func glNotes(startID, n int) []map[string]any {
@@ -730,6 +764,80 @@ func glCases() []glCase {
 			run: func(f *GitLabForge) (any, error) {
 				return f.ApplyLabels(glRepo, 7, LabelChange{
 					Add: []LabelSpec{{Name: "approval-needed", Color: "0e8a16"}},
+				})
+			},
+		},
+		{
+			name: "read_file", method: "ReadFile",
+			setup: func(s *glServer) {
+				s.repoFile = map[string]map[string]any{
+					"EVIDENCE.md": {
+						"file_name":      "EVIDENCE.md",
+						"file_path":      "EVIDENCE.md",
+						"content":        glB64("row one\n"),
+						"encoding":       "base64",
+						"ref":            "feat/x",
+						"blob_id":        "blob-1",
+						"last_commit_id": "commit-1",
+					},
+				}
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return f.ReadFile(glRepo, ReadFileInput{File: "EVIDENCE.md", Ref: "feat/x"})
+			},
+		},
+		{
+			// Update path: the default branch is NOT the target, the file exists, so the
+			// idempotency read finds it and the write is a PUT. GitLab's write response carries
+			// no sha or author, so the result reports Changed with empty SHA/Author.
+			name: "write_file_updates_existing", method: "WriteFile",
+			setup: func(s *glServer) {
+				s.project = map[string]any{"visibility": "private", "default_branch": "main"}
+				s.repoFile = map[string]map[string]any{
+					"EVIDENCE.md": {
+						"file_name": "EVIDENCE.md", "file_path": "EVIDENCE.md",
+						"content": glB64("row one\n"), "encoding": "base64",
+						"ref": "feat/x", "blob_id": "blob-1", "last_commit_id": "commit-1",
+					},
+				}
+				s.updateFileResp = map[string]any{"file_path": "EVIDENCE.md", "branch": "feat/x"}
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return f.WriteFile(glRepo, WriteFileInput{
+					File: "EVIDENCE.md", Branch: "feat/x", Content: []byte("row one\nrow two\n"),
+					Message: "Evidence: verification row",
+				})
+			},
+		},
+		{
+			// Create path: the file is absent on the branch (404), so the write is a POST that
+			// creates it, with StartBranch naming the base the side branch is cut from — the
+			// inline branch-creation fallback, so no separate CreateRef op is needed.
+			name: "write_file_creates_with_start_branch", method: "WriteFile",
+			setup: func(s *glServer) {
+				s.project = map[string]any{"visibility": "private", "default_branch": "main"}
+				s.repoFile = map[string]map[string]any{} // absent → 404 → create
+				s.createFileResp = map[string]any{"file_path": "EVIDENCE.md", "branch": "evidence/row"}
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return f.WriteFile(glRepo, WriteFileInput{
+					File: "EVIDENCE.md", Branch: "evidence/row", Content: []byte("row one\n"),
+					Message: "Evidence: verification row", StartBranch: "main",
+				})
+			},
+		},
+		{
+			// The writability probe: the target IS the default branch, which GitLab protects
+			// (pilot D-8), so the backend returns the DefaultBranchNotWritable sentinel and makes
+			// NO write call — the golden's request list shows only the project read.
+			name: "write_file_default_branch_closed", method: "WriteFile",
+			setup: func(s *glServer) {
+				s.project = map[string]any{"visibility": "private", "default_branch": "main"}
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return f.WriteFile(glRepo, WriteFileInput{
+					File: "EVIDENCE.md", Branch: "main", Content: []byte("row one\n"),
+					Message: "Evidence: verification row",
 				})
 			},
 		},

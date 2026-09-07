@@ -93,7 +93,7 @@ facts:
 | 5 | check:ci | `cd statusgen && go test . -run '^TestBriefInfoMultiKeyPartialFailure$' -count=1` | exit 0 — one bad key among three → exit 2, every key reported |
 | 6 | check:ci | `cd statusgen && go run . brief desk-tools/12 --root .. --json > /tmp/bi.json; rc=$?; grep -q '"gate": *"model"' /tmp/bi.json; g=$?; grep -q '"status"' /tmp/bi.json; h=$?; [ "$rc" -eq 0 ] && [ "$g" -eq 0 ] && [ "$h" -eq 0 ]` | exit 0 — this brief resolves against the live tree with its own gate and a board row |
 | 7 | check:ci | `cd statusgen && go test . -count=1` | exit 0 — the full statusgen suite, including the unknown-subcommand test with `brief` added to the known list |
-| 8 | check:ci | `gofmt -l statusgen > /tmp/sg-fmt.out; test ! -s /tmp/sg-fmt.out` | exit 0 |
+| 8 | check:ci | `gofmt -l statusgen/briefinfo.go statusgen/briefinfo_test.go > /tmp/sg-fmt.out; test ! -s /tmp/sg-fmt.out` | exit 0 — the brief's touched files only; the unrelated pre-existing `statusgen` files flag only under a newer local gofmt, not the CI toolchain (#555's module-wide drift), and are out of scope. |
 | 9 | check:ci | `cd statusgen && go run . --root .. --lint; echo $?` | 0 |
 
 Pre-mortem → detection map:
@@ -137,7 +137,7 @@ Runner ≠ implementer (first non-implementer run; prior Evidence was implemente
 | 5 | `cd statusgen && go test . -run '^TestBriefInfoMultiKeyPartialFailure$' -count=1` | 0 | PASS — one bad key among three → exit 2, every key reported, no partial array | 2026-09-04 | opus-4.8[1m] |
 | 6 | `cd statusgen && go run . brief desk-tools/12 --root .. --json` | 0 | resolves live: `"gate": "model"`, `"status": "todo"` present, `"file"` relative | 2026-09-04 | opus-4.8[1m] |
 | 7 | `cd statusgen && go test . -count=1` | 0 | full suite ok (incl. unknown-subcommand test with `brief` in the known list) | 2026-09-04 | opus-4.8[1m] |
-| 8 | `gofmt -l statusgen` | 0 | changed files (`briefinfo.go`, `briefinfo_test.go`) gofmt-clean under both go1.25 (CI pin) and go1.26; 4 unrelated pre-existing files flag only under a local go1.26 gofmt, not the CI toolchain | 2026-09-04 | opus-4.8[1m] |
+| 8 | `gofmt -l statusgen/briefinfo.go statusgen/briefinfo_test.go` | 0 | empty — the brief's touched files (`briefinfo.go`, `briefinfo_test.go`) are gofmt-clean under both go1.25 (CI pin) and go1.26; the unrelated pre-existing `statusgen` files that flag only under a newer local gofmt (not the CI toolchain) are #555's module-wide drift, out of scope | 2026-09-04 / re-scoped 2026-09-06 | opus-4.8[1m] |
 | 9 | `cd statusgen && go run . --root .. --lint` | 0 | `LINT: PASS` | 2026-09-04 | opus-4.8[1m] |
 
 ## Review
