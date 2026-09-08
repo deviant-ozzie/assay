@@ -281,6 +281,18 @@ const (
 	// opt-in on either side from a file. KEEP IN SYNC with
 	// deskkit/rosterconfig.go's EnvAllowCluster.
 	scanEnvAllowCluster = "ASSAY_ALLOW_CLUSTER"
+
+	// scanEnvGitLabSessionEmails (ASSAY_GITLAB_SESSION_EMAILS) is the desk's GitLab
+	// SESSION / implementer commit-author allowlist, CONSUMED by the desk's
+	// commit-identity preflight (deskkit/preflight.go) to distinguish the session
+	// identity that authors commits from the role service account used for API
+	// writes (#643). statusgen runs no such preflight and consumes it in neither
+	// form — but the house records it in the SAME shared roster.env this reader
+	// parses, so an unrecognised-key refusal here would mean turning the desk's
+	// GitLab two-identity path on collapses statusgen's whole configuration.
+	// Recognised, not applied. KEEP IN SYNC with deskkit/rosterconfig.go's
+	// EnvGitLabSessionEmails.
+	scanEnvGitLabSessionEmails = "ASSAY_GITLAB_SESSION_EMAILS"
 )
 
 // scanKnownRosterKeys is the ASSAY_-namespace roster SCHEMA this binary speaks:
@@ -321,6 +333,7 @@ func scanKnownRosterKeys() []string {
 		// consumes each and why statusgen must not fail closed on it.
 		scanEnvRepoForges, scanEnvRiskCallout,
 		scanEnvWithheldIdentifiers, scanEnvAllowCluster,
+		scanEnvGitLabSessionEmails,
 	}
 }
 
