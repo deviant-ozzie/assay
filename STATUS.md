@@ -41,14 +41,14 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (43 desk-actionable of 54 total — 54 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (44 desk-actionable of 55 total — 55 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (43)
+### Desk-actionable (44)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -90,6 +90,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 13 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| harness-portability | 14 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | quality | 15 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 03 | implemented | 1000 | 0 | — | — | — |
 | statusgen | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -250,7 +251,7 @@ _None._
 - 10 SpecMem portable-memory spike — one stream's registers across two harnesses — implemented (wave 0)
 - 12 Cursor — the third harness column (ground-truth + binding + generator verb + public column) — implemented (wave 5)
 - 13 Cursor live-desk-smoke protocol + first run — implemented (wave 6)
-- 14 Code de-house — land the stream's tool and packaging deliverables in the public tree — todo (wave 6)
+- 14 Code de-house — land the stream's tool and packaging deliverables in the public tree — implemented (wave 6)
 
 ### iso-9001 (4 open)
 
