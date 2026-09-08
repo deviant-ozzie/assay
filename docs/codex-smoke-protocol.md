@@ -1,8 +1,7 @@
 # Codex smoke protocol — the live-harness acceptance checklist
 
 **Brief**: [harness-portability/07](streams/harness-portability/brief-07-adoption-live-smoke.md)
-**Judged against**: the ruled degradation matrix in
-[`harness-portability-ruling.md`](harness-portability-ruling.md) (Decision C) as carried
+**Judged against**: the ruled degradation matrix (Decision C) as carried
 verbatim into the binding file [`../plugins/assay/references/codex.md`](../plugins/assay/references/codex.md).
 
 ## Why this document exists

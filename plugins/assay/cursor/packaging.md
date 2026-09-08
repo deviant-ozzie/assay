@@ -24,13 +24,14 @@ Dispositions:
   Cursor still ships — the refusal/degradation text is method, carried in the binding
   file (`../references/cursor.md`); refusal is not exclusion.
 - **excluded** — `<name> :: EXCLUDED: <reason>`. NOT shipped; needs a written reason
-  citing HP/12's matrix or Ian's 2026-08-26 ruling, never convenience. There are no
+  citing HP/12's matrix or human:<name>'s 2026-08-26 ruling, never convenience. There are no
   exclusions today: every current skill either `runs`, `degrades`, or (headless,
   conditionally) `refuses` on Cursor — all of which SHIP (see `../references/cursor.md`).
 
-`tools/harnessgen cursor --check` (wired into `.github/workflows/tools.yml`) enforces
-this on every PR; `TestCursor*` in `tools/harnessgen` exercises the coverage, skew,
-drift, and parse-error paths.
+`tools/harnessgen cursor --check`, exercised by `TestCursor*` in `tools/harnessgen`, enforces
+this; those tests cover the coverage, skew, drift, and parse-error paths. `ci.yml`'s
+module walk auto-discovers `tools/harnessgen` (build + vet); the suites themselves are
+proven per the harness-portability/14 Verify table.
 
 <!-- assay:cursor-packaging
 adopt
@@ -45,6 +46,6 @@ the-desk
 upgrade-assay
 verify-desk
 worker-desk
-# Excluded skills, if any, go here as:  <name> :: EXCLUDED: <reason citing HP/12 or Ian's 2026-08-26 ruling>
+# Excluded skills, if any, go here as:  <name> :: EXCLUDED: <reason citing HP/12 or human:<name>'s 2026-08-26 ruling>
 # (none today — every current skill runs/degrades/refuses on Cursor, all of which ship)
 -->

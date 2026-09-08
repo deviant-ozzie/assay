@@ -26,9 +26,10 @@ Dispositions:
   exclusions today: HP/03 ruled every current skill either `runs`, `degrades`, or
   `refuses` on Codex CLI — all of which SHIP (see `../references/codex.md`).
 
-`tools/harnessgen codex --check` (wired into `.github/workflows/tools.yml`) enforces
-this on every PR; `TestCodex*` in `tools/harnessgen` exercises the coverage,
-skew, and parse-error paths.
+`tools/harnessgen codex --check`, exercised by `TestCodex*` in `tools/harnessgen`, enforces
+this; those tests cover the coverage, skew, and parse-error paths. `ci.yml`'s module walk
+auto-discovers `tools/harnessgen` (build + vet); the suites themselves are proven per the
+harness-portability/14 Verify table.
 
 <!-- assay:codex-packaging
 adopt

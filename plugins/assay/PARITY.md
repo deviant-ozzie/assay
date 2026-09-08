@@ -270,11 +270,11 @@ something a person must notice.
 
 ## education/04 — intake-desk scrub
 
-**Ported 2026-08-12, from `medici-finance/assay` `.claude/skills/intake-desk/SKILL.md` @
+**Ported on 2026-08-12, from `medici-finance/assay` `.claude/skills/intake-desk/SKILL.md` @
 `1c317782` (blob `d624efb5`).** Unlike every row above (rows 1–6, all straight re-ports per the
 assay-selfcontain/08 snapshot), this row is a **scrubbed** port — it is expected to report
 `behind`/diff against its recorded source blob in `SOURCES.yaml`, and that diff is the scrub, not
-staleness. Phase 0 ruling 2 (`docs/education-plan.md`, Ian 2026-08-11) requires this: the taught
+staleness. Phase 0 ruling 2 (`docs/education-plan.md`, human:<name>, 2026-08-11) requires this: the taught
 five-desk pipeline (`intake-desk → worker-desk → pr-review-desk → verify-desk`) is not installable
 whole without its front door, so intake-desk joins the four desk-role skills already in the bundle
 (rows 2, 3, 5, 6 — `the-desk`, `worker-desk`, `pr-review-desk`, `verify-desk`) — but as house
@@ -467,8 +467,8 @@ The first cut carried 54 occurrences of a personal name, 10 of a persona name, a
 identifiers across four of the five skill bodies (`author-brief` was already clean). Three classes,
 handled differently:
 
-- **Role references -> generic.** "without Ian's go" -> "without the human driver's go", "merge is
-  Ian's" -> "merge is the human driver's", and so on, matching the phrasing the SessionStart hook
+- **Role references -> generic.** "without human:<name>'s go" -> "without the human driver's go", "merge is
+  human:<name>'s" -> "merge is the human driver's", and so on, matching the phrasing the SessionStart hook
   already uses. Pronouns degendered.
 - **Persona -> deleted, convention kept.** The named persona ("Bob"), its rationale, the
   `"resume Bob"` invocation trigger and the `"Bob here"` boot announcement are removed. The
