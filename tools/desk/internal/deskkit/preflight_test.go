@@ -573,6 +573,114 @@ func TestCommitIdentityCrossForgeRejected(t *testing.T) {
 	}
 }
 
+// pfGitLabSessionEmail is an ordinary GitLab USER commit address — the shape the
+// documented two-identity session actor (`ih-bot`) commits under (#643). It is NOT the
+// service-account noreply form and NOT a GitHub noreply address, so the pre-#643 check
+// rejected it outright.
+const pfGitLabSessionEmail = "ih-bot@medici.example"
+
+// TestCommitIdentityGitLabSessionEmail is the #643 fix, both cases in one test: on a
+// GitLab role the SESSION / implementer identity that authors the commits is DISTINCT
+// from the role service account used for API writes, so a commit under a configured
+// session address PASSES — while the service-account commit path still demands the
+// noreply shape and an UNTRUSTED ordinary address still FAILS.
+//
+// This is the fail-first control for the change. On the pre-fix code the first assertion
+// (session email + configured allowlist ⇒ clean) FAILS: the old checkGitLabCommitIdentity
+// had no session-allowlist branch, so it fell through to "not the service-account noreply
+// form" and returned CheckedFailed. Mutation to reproduce the red: delete the
+// GitLabSessionEmailAllowed(email) branch from checkGitLabCommitIdentity.
+func TestCommitIdentityGitLabSessionEmail(t *testing.T) {
+	dir := t.TempDir()
+
+	// (a) Session email configured + commit under it ⇒ clean. The bug this fixes.
+	withRoster(t, map[string]string{
+		EnvBlessLogin:          "ada:2001",
+		EnvTrustedBotSlugs:     "worker=gitlab:assay-worker-bot:83",
+		EnvGitLabSessionEmails: pfGitLabSessionEmail,
+	})
+	p := okProbes().withDefaults()
+	p.CommitEmail = func(string) (string, error) { return pfGitLabSessionEmail, nil }
+	if c := checkCommitIdentity(p, "worker", dir); c.State != CheckedClean {
+		t.Fatalf("gitlab entry + configured session email = %s, want clean (%s)", c.State, c.Detail)
+	}
+
+	// (b) The service-account commit path still passes with the SAME roster: committing
+	// AS the SA is not displaced by the session allowlist.
+	p.CommitEmail = func(string) (string, error) { return pfGitLabEmail, nil }
+	if c := checkCommitIdentity(p, "worker", dir); c.State != CheckedClean {
+		t.Fatalf("gitlab entry + service-account shape = %s, want clean (%s)", c.State, c.Detail)
+	}
+
+	// (c) An ordinary address that is NOT in the allowlist still FAILS — the allowlist is
+	// exact-match, so it never becomes "any user email passes".
+	p.CommitEmail = func(string) (string, error) { return "someone-else@medici.example", nil }
+	if c := checkCommitIdentity(p, "worker", dir); c.State != CheckedFailed {
+		t.Fatalf("gitlab entry + unlisted ordinary email = %s, want failed (%s)", c.State, c.Detail)
+	}
+
+	// (d) The cross-forge rejection is unchanged even with a session allowlist configured:
+	// a GitHub noreply address for a GitLab entry still FAILS.
+	p.CommitEmail = func(string) (string, error) { return pfGitHubReviewE, nil }
+	if c := checkCommitIdentity(p, "worker", dir); c.State != CheckedFailed {
+		t.Fatalf("gitlab entry + github noreply (allowlist set) = %s, want failed (%s)", c.State, c.Detail)
+	}
+}
+
+// TestCommitIdentityGitLabSessionUnsetKeepsSAOnly proves the FAIL-CLOSED default: with NO
+// session allowlist configured, the service-account noreply shape is the ONLY accepted
+// GitLab commit email — byte-for-byte the pre-#643 behaviour — so the same ordinary
+// session address that passes in TestCommitIdentityGitLabSessionEmail FAILS here. This is
+// what makes the widening opt-in rather than a blanket relaxation.
+func TestCommitIdentityGitLabSessionUnsetKeepsSAOnly(t *testing.T) {
+	dir := t.TempDir()
+	withRoster(t, map[string]string{
+		EnvBlessLogin:      "ada:2001",
+		EnvTrustedBotSlugs: "worker=gitlab:assay-worker-bot:83",
+	})
+	p := okProbes().withDefaults()
+
+	// Ordinary session address, allowlist UNSET ⇒ still failed.
+	p.CommitEmail = func(string) (string, error) { return pfGitLabSessionEmail, nil }
+	if c := checkCommitIdentity(p, "worker", dir); c.State != CheckedFailed {
+		t.Fatalf("gitlab entry + session email with UNSET allowlist = %s, want failed (%s)", c.State, c.Detail)
+	}
+
+	// Service-account shape still clean with the allowlist unset.
+	p.CommitEmail = func(string) (string, error) { return pfGitLabEmail, nil }
+	if c := checkCommitIdentity(p, "worker", dir); c.State != CheckedClean {
+		t.Fatalf("gitlab entry + service-account shape (allowlist unset) = %s, want clean (%s)", c.State, c.Detail)
+	}
+}
+
+// TestGitLabSessionEmailAllowedNormalisation pins the accessor's contract: exact-match,
+// case-insensitive, unset admits nothing, and it never reads the GitHub-forge path.
+func TestGitLabSessionEmailAllowedNormalisation(t *testing.T) {
+	// Unset ⇒ nothing is allowed.
+	withRoster(t, map[string]string{EnvBlessLogin: "ada:2001"})
+	if GitLabSessionEmailAllowed(pfGitLabSessionEmail) {
+		t.Fatalf("unset allowlist admitted %q", pfGitLabSessionEmail)
+	}
+
+	// Configured with mixed case + spacing ⇒ matched case-insensitively, exact only.
+	withRoster(t, map[string]string{
+		EnvBlessLogin:          "ada:2001",
+		EnvGitLabSessionEmails: " IH-Bot@Medici.Example , ci-bot@medici.example ",
+	})
+	if !GitLabSessionEmailAllowed("ih-bot@medici.example") {
+		t.Fatal("configured session email not matched case-insensitively")
+	}
+	if !GitLabSessionEmailAllowed("CI-BOT@MEDICI.EXAMPLE") {
+		t.Fatal("second configured session email not matched")
+	}
+	if GitLabSessionEmailAllowed("ih-bot@other.example") {
+		t.Fatal("a non-listed address was admitted (allowlist must be exact-match)")
+	}
+	if GitLabSessionEmailAllowed("") {
+		t.Fatal("empty email was admitted")
+	}
+}
+
 // ---- check 5: sibling checkouts (#679) ------------------------------------
 
 // TestPreflightMissingSiblingIsRed is the #679 positive control: a queued brief
