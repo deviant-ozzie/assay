@@ -103,11 +103,11 @@ import (
 )
 
 const (
-	scanEnvBlessLogin            = "ASSAY_BLESS_LOGIN"
-	scanEnvTrustedLogins         = "ASSAY_TRUSTED_LOGINS"
-	scanEnvTrustedBotSlugs       = "ASSAY_TRUSTED_BOT_SLUGS"
-	scanEnvAllowedRepos          = "ASSAY_ALLOWED_REPOS"
-	scanEnvHumanLoginMap         = "ASSAY_HUMAN_LOGIN_MAP"
+	scanEnvBlessLogin      = "ASSAY_BLESS_LOGIN"
+	scanEnvTrustedLogins   = "ASSAY_TRUSTED_LOGINS"
+	scanEnvTrustedBotSlugs = "ASSAY_TRUSTED_BOT_SLUGS"
+	scanEnvAllowedRepos    = "ASSAY_ALLOWED_REPOS"
+	scanEnvHumanLoginMap   = "ASSAY_HUMAN_LOGIN_MAP"
 	// scanEnvFormerHumanLoginMap carries the FORMER-humans map: name:login entries
 	// for humans who WERE confirmed at some past point but have since left the
 	// roster. Same format and bot-shape validation as ASSAY_HUMAN_LOGIN_MAP. It is
@@ -590,7 +590,8 @@ func scanReadConfigFile() (map[string]string, string, error) {
 
 // scanCheckOwnerPerms is the sshd rule: a configuration that decides who is
 // trusted must not be writable by anyone but its owner, and must be owned by the
-// user running the tool.
+// user running the tool. Unix enforces ownership and mode bits; Windows inspects
+// the owner and DACL because os.FileMode's 0666/0777 values are synthetic there.
 func scanCheckOwnerPerms(path string, isDir bool) error {
 	fi, err := os.Stat(path)
 	if err != nil {
@@ -599,20 +600,6 @@ func scanCheckOwnerPerms(path string, isDir bool) error {
 	if isDir && !fi.IsDir() {
 		return fmt.Errorf("%s is not a directory", path)
 	}
-	if mode := fi.Mode().Perm(); mode&0o022 != 0 {
-		kind := "file"
-		fix := "0600"
-		if isDir {
-			kind = "directory"
-			fix = "0700"
-		}
-		return fmt.Errorf("roster config %s %s is group- or world-writable (mode %04o): "+
-			"anything that can write it can name the accounts this tool trusts. "+
-			"Fix with `chmod %s %s`", kind, path, mode, fix, path)
-	}
-	// Owner check is platform-specific: unix compares the owning uid; windows has
-	// no uid and skips it LOUDLY (see rosterowner_{unix,windows}.go). The
-	// group/world-writable mode check above runs on both platforms.
 	return checkFileOwner(path, fi)
 }
 

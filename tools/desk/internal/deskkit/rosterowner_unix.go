@@ -8,16 +8,17 @@ import (
 	"syscall"
 )
 
-// checkFileOwner enforces that the roster config is owned by the user running the
-// tool — a co-located unprivileged process must not be able to plant or edit the
-// roster without already holding the user's own write access. Unix variant: reads
-// the owning uid from the stat result.
-//
-// These are deskkit's OWN error strings, moved verbatim from checkOwnerPerms; they
-// are deliberately NOT converged with statusgen's cross-tree copy. The
-// group/world-writable MODE check that precedes the extraction stays in
-// rosterconfig.go and runs on both platforms.
+// checkFileOwner enforces the Unix ownership + mode form of the sshd rule.
 func checkFileOwner(path string, fi os.FileInfo) error {
+	if mode := fi.Mode().Perm(); mode&0o022 != 0 {
+		kind, fix := "file", "0600"
+		if fi.IsDir() {
+			kind, fix = "directory", "0700"
+		}
+		return fmt.Errorf("roster config %s %s is group- or world-writable (mode %04o): "+
+			"anything that can write it can name the accounts this tool trusts. "+
+			"Fix with `chmod %s %s`", kind, path, mode, fix, path)
+	}
 	st, ok := fi.Sys().(*syscall.Stat_t)
 	if !ok {
 		return fmt.Errorf("cannot determine the owner of %s — refusing to read a roster "+

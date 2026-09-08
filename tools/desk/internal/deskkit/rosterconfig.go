@@ -711,6 +711,10 @@ func readConfigFile() (map[string]string, string, error) {
 // running the tool. A co-located unprivileged process then cannot plant or edit
 // the roster without already holding the user's own write access.
 //
+// Permission representation is platform-specific. Unix enforces ownership and
+// mode bits; Windows inspects the owner and DACL. os.FileMode on Windows is a
+// synthetic 0666/0777 projection and cannot express an NTFS ACL.
+//
 // A MISSING directory or file is reported as os.ErrNotExist so the caller can
 // tell "not configured" from "configured wrongly" — the two need different
 // messages, and conflating them is how "unconfigured" starts reading as "fine".
@@ -722,18 +726,6 @@ func checkOwnerPerms(path string, isDir bool) error {
 	if isDir && !fi.IsDir() {
 		return fmt.Errorf("%s is not a directory", path)
 	}
-	if mode := fi.Mode().Perm(); mode&0o022 != 0 {
-		kind := "file"
-		if isDir {
-			kind = "directory"
-		}
-		return fmt.Errorf("roster config %s %s is group- or world-writable (mode %04o): "+
-			"anything that can write it can name the accounts this tool trusts. "+
-			"Fix with `chmod %s %s`", kind, path, mode, map[bool]string{true: "0700", false: "0600"}[isDir], path)
-	}
-	// Owner check is platform-specific: unix compares the owning uid; windows has
-	// no uid and skips it LOUDLY (see rosterowner_{unix,windows}.go). The
-	// group/world-writable mode check above runs on both platforms.
 	return checkFileOwner(path, fi)
 }
 

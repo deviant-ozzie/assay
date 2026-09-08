@@ -62,17 +62,16 @@ func installFixtureRoster() (cleanup func(), err error) {
 	if err := os.WriteFile(filepath.Join(dir, "roster.env"), []byte(fixtureRoster), 0o600); err != nil {
 		return nil, err
 	}
-	prev, had := os.LookupEnv("HOME")
-	if err := os.Setenv("HOME", home); err != nil {
+	if err := secureTestRosterPaths(dir, filepath.Join(dir, "roster.env")); err != nil {
+		return nil, err
+	}
+	restoreHome, err := setFixtureRosterHome(home)
+	if err != nil {
 		return nil, err
 	}
 	ReloadConfig()
 	return func() {
-		if had {
-			_ = os.Setenv("HOME", prev)
-		} else {
-			_ = os.Unsetenv("HOME")
-		}
+		restoreHome()
 		os.RemoveAll(home)
 		ReloadConfig()
 	}, nil
@@ -108,6 +107,9 @@ func withRoster(t *testing.T, vals map[string]string) string {
 		fmt.Fprintf(&b, "%s=%s\n", k, vals[k])
 	}
 	if err := os.WriteFile(filepath.Join(dir, "roster.env"), []byte(b.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := secureTestRosterPaths(dir, filepath.Join(dir, "roster.env")); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", home)
