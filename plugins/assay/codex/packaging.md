@@ -32,13 +32,15 @@ skew, and parse-error paths.
 
 <!-- assay:codex-packaging
 adopt
+ask-decision
 author-brief
-dailies
 install
 intake-desk
-market-intelligence
+pdfingest
 pr-review-desk
+pr-shepherd
 the-desk
+upgrade-assay
 verify-desk
 worker-desk
 # Excluded skills, if any, go here as:  <name> :: EXCLUDED: <reason citing HP/03 or HP/01>

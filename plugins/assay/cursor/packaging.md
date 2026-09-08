@@ -34,13 +34,15 @@ drift, and parse-error paths.
 
 <!-- assay:cursor-packaging
 adopt
+ask-decision
 author-brief
-dailies
 install
 intake-desk
-market-intelligence
+pdfingest
 pr-review-desk
+pr-shepherd
 the-desk
+upgrade-assay
 verify-desk
 worker-desk
 # Excluded skills, if any, go here as:  <name> :: EXCLUDED: <reason citing HP/12 or Ian's 2026-08-26 ruling>

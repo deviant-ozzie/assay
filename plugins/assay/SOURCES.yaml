@@ -50,30 +50,6 @@ files: []
 
 canonical:
   # ---------------------------------------------------------------------------
-  # PARITY.md row 6 / assay-dogfood/07. dailies moved here from `files:` —
-  # the skill-body convergence brief pushed its house-specific content (report
-  # roster, repo paths, real PR numbers, the portfolio table) that used to
-  # make this a "straight re-port copied AS-IS" into layer 2 (CLAUDE.md /
-  # the roster) and layer 1 (resident-rules.md) where it resolves from,
-  # rather than deferring the parameterisation pass assay-selfcontain/09
-  # once planned. House and bundle are now byte-identical (`tools/skillslint`
-  # PARITY check), so there is nothing left to pin or measure drift against.
-  # ---------------------------------------------------------------------------
-  - path: skills/dailies/SKILL.md
-    reason: >-
-      Canonical home of the dailies method text since the assay-dogfood/07
-      skill-body convergence. No upstream remains — the house copy
-      (.claude/skills/dailies/SKILL.md) is byte-identical to this file, held
-      in sync by `tools/skillslint`'s PARITY check, not by re-fetch.
-    notes: >-
-      Added to the bundle under assay-selfcontain/10 (bundle membership) as a
-      straight re-port, then a scrubbed/pinned `files:` row through
-      education/04; converged to a single neutral body (house values resolved
-      via CLAUDE.md/the roster) and declared canonical-here at
-      assay-dogfood/07. Exact SHAs of the pre-convergence port history remain
-      in PARITY.md.
-
-  # ---------------------------------------------------------------------------
   # education/04 (Phase 0 ruling 2) / assay-dogfood/07. intake-desk moved here
   # from `files:` — the convergence brief replaced the hand-scrubbed port
   # (house repo slugs, internal issue numbers, the persona reference) with the
@@ -169,17 +145,34 @@ unported:
       Authored in this repo (3c33240) as the invokable entry to the adoption
       runbook. It documents THIS bundle, so it has no upstream to port from and
       no drift baseline to hold.
+  - path: skills/ask-decision/SKILL.md
+    reason: >-
+      Authored/homed in this repository as the decision-filing utility skill. It
+      carries no upstream source block, so there is no drift baseline to hold —
+      declared here so coverage accounts for it rather than reporting it
+      unaccounted.
   - path: skills/install/SKILL.md
     reason: >-
       Authored in this repo (assay-dogfood/06) as the turnkey install verb that
       orchestrates the `adopt` runbook's PRIMITIVEs. It documents THIS bundle
       (and reads the sibling plugins/assay/paired-versions.yaml), so it has no
       upstream to port from and no drift baseline to hold.
-  - path: skills/market-intelligence/SKILL.md
+  - path: skills/pdfingest/SKILL.md
     reason: >-
-      Authored in this repo (5993b5b) for assay-product/09. The source repo's
-      `.claude/skills/` has never contained it, so there is nothing to compare
-      against.
+      Authored/homed in this repository as a local PDF-ingestion utility. It
+      carries no upstream source block, so there is no drift baseline to hold —
+      declared here so coverage accounts for it rather than reporting it
+      unaccounted.
+  - path: skills/pr-shepherd/SKILL.md
+    reason: >-
+      Homed in this bundle: it shipped in the public bundle and the in-repo
+      shadow copy is retired, so the installed skill is the only one and there
+      is no upstream to port from or drift against. Declared here for coverage.
+  - path: skills/upgrade-assay/SKILL.md
+    reason: >-
+      Authored/homed in this repository as the umbrella-version upgrade verb; it
+      documents THIS bundle's version markers and migrations, so it has no
+      upstream to port from and no drift baseline to hold.
 
 # ---------------------------------------------------------------------------
 # Resident operating rules — single source + generated delivery artifacts
