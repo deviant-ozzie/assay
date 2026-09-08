@@ -44,7 +44,7 @@ files:
 - **edit** every `component.yaml` from brief 00: replace each `TODO composability/02` reverse
   line with a real `inverse:` (inside) or `ledger:` + `compensation:` (outside) per
   `component-model.md` §4.
-- **create** `tools/desk/internal/deskkit/ledger.go` — append-only writer/reader for
+- **create** `tools/desk/internal/deskkit/ledger.go` (planned) — append-only writer/reader for
   `.assay/ledger.jsonl` (`{component, version, step, kind, id, created, by}`).
 - **edit** `tools/desk/cmd/deskinstall/` and the scaffold paths `assay:install` drives so that
   every outside step writes its ledger line at the moment of creation (label created, ruleset
@@ -53,7 +53,7 @@ files:
   replays the component's reverses LIFO; inside steps run; outside steps run their compensation
   only when it is marked `unattended: true` in the manifest, otherwise they are printed as a
   human checklist. `--dry-run` prints the plan and exits 0 without touching anything.
-- **edit** `tools/desk/component.yaml` — provides `assay.desk.verbs` now includes `deskdisable`.
+- **edit** `tools/desk/component.yaml` (planned) — provides `assay.desk.verbs` now includes `deskdisable`.
 
 facts:
 - **Inside the boundary** (`component-model.md` §5): `docs/streams/**`, `STATUS.md`,

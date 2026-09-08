@@ -35,7 +35,7 @@ consumers:
 ## Context
 
 files:
-- **create** the schema and a reference `.assay/config.yaml` (`schema: assay-config-v1`,
+- **create** the schema and a reference `.assay/config.yaml` (planned) (`schema: assay-config-v1`,
   `umbrella`, `entries[]` with `id`, `component`, `version`, `config`, `intercept`, `disabled`)
   — documented in `component-model.md` §7, checked by `deskmanifest lint`.
 - **edit** `tools/desk/cmd/deskmigrate/` — becomes the reconcile engine driver: `deskmigrate plan`
@@ -59,7 +59,7 @@ facts:
   order over a fixture.
 - **Dependency order is derived from `inject`**: a component's apply runs after its required
   providers'; reverses run in the opposite order. No hand-written order survives this brief.
-- **Pre-record adopters** have `.assay-versions` and no `.assay/config.yaml`; the first
+- **Pre-record adopters** have `.assay-versions` and no `.assay/config.yaml` (planned); the first
   `deskmigrate plan` on such a tree synthesises a record from the pin and the manifests present,
   prints it, and asks for it to be committed before applying anything.
 - **Outside steps still go through 02's compensation rules**: a rebuild whose reverse is
@@ -95,7 +95,7 @@ facts:
 
 | # | Command | Expect |
 |---|---------|--------|
-| 1 | `deskmanifest lint --root <fixture>` with a valid `.assay/config.yaml` | exit 0 |
+| 1 | `deskmanifest lint --root <fixture>` with a valid `.assay/config.yaml` (planned) | exit 0 |
 | 2 | `deskmigrate plan` on a fixture whose record matches its ledger | exit 0; prints `no operations` |
 | 3 | edit one entry's `version`; `deskmigrate plan` | exit 0; exactly one `rebuild` operation for that entry, preceded by none and followed by its dependents' re-activation lines |
 | 4 | edit one entry's `intercept`; `deskmigrate plan` | exit 0; one `update-in-place`; no rebuild |

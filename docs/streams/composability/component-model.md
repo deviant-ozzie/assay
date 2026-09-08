@@ -4,9 +4,9 @@ title: Component model — draft-0 of component-v1
 status: draft
 ---
 
-# Component model — draft-0 (candidate `spec/component-v1.md`)
+# Component model — draft-0 (candidate `spec/component-v1.md` (planned))
 
-**Version:** draft-0 (stream-local; `composability/05` promotes it to `spec/component-v1.md`)
+**Version:** draft-0 (stream-local; `composability/05` promotes it to `spec/component-v1.md` (planned))
 **Status:** DRAFT — every MUST below is a design target, not a description of the reference
 implementation. §12 lists what exists today.
 **Source model:** *A Programming Paradigm for Spatiotemporal Composability*, arXiv 2608.25512
@@ -85,7 +85,7 @@ Keys are namespaced `assay.<area>.<name>` so that two components cannot collide 
 name (the paper's §6.6 key-collision problem, solved by namespacing). Adopter-defined keys
 use their own top-level namespace and MUST NOT start with `assay.`.
 
-Initial catalogue (brief 00 owns the authoritative list, at `components/KEYS.md`):
+Initial catalogue (brief 00 owns the authoritative list, at `components/KEYS.md` (planned)):
 
 | Key | Provided by | Meaning |
 |---|---|---|
@@ -166,7 +166,7 @@ narrows which components a broken non-security value can stop.
 
 ## 7. The desired-state record and the reconcile engine
 
-`.assay/config.yaml` in the adopter repo is the authoritative record of what is installed:
+`.assay/config.yaml` (planned) in the adopter repo is the authoritative record of what is installed:
 
 ```yaml
 schema: assay-config-v1
@@ -251,7 +251,7 @@ follows `spec/README.md`'s draft policy once promoted.
 ## 12. What exists today (known divergences)
 
 - No manifests, no key catalogue, no lint. The nearest thing is the prose inventory in
-  `docs/adopting-assay.md` §2 and the `ASSAY_*` list in `docs/roster-configuration.md`.
+  `docs/adopting-assay.md` §2 and the `ASSAY_*` list in `docs/adopting-assay.md` (roster section).
 - No inverses and no `disable` verb; install is idempotent and refuse-not-clobber, with no
   reverse. The only removal text in the tree is the shim-off-PATH note.
 - No ledger. What Assay creates on a forge (Apps, rulesets, labels, Actions variables) is

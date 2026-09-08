@@ -58,13 +58,13 @@ rulesets, labels in use) listed for a human to compensate rather than silently l
 2. **Install ledger + paired inverses + `disable` (brief 02).** Every apply step in every
    manifest gets its inverse (inside the boundary) or its ledger entry and compensation
    (outside it). A `disable` verb replays them LIFO. Human-gated: it deletes things.
-3. **Desired-state record + reconcile engine (brief 03).** `.assay/config.yaml` entries; the
+3. **Desired-state record + reconcile engine (brief 03).** `.assay/config.yaml` (planned) entries; the
    reconcile engine applies the least disruptive operation per changed field; `deskmigrate` and
    `upgrade-assay` drive it instead of a hand-ordered primitive list.
 4. **Harness as an exclusively-bound key (brief 04).** The Claude Code, Codex and Cursor
    adapters become components that *provide* `assay.harness`; the skills *inject* it. One
    binding at a time, switched by the reconcile engine, not by three parallel manifests.
-5. **Promote to `spec/component-v1.md` + adopter doc delta (brief 05).** The draft in this
+5. **Promote to `spec/component-v1.md` (planned) + adopter doc delta (brief 05).** The draft in this
    stream becomes a versioned spec document alongside `brief-v1`, `registers-v1`,
    `lifecycle-v1`; `docs/adopting-assay.md` gains the component view and the removal path.
 

@@ -35,19 +35,19 @@ consumers:
 ## Context
 
 files:
-- **create** `components/harness-claude-code/component.yaml`,
-  `components/harness-codex/component.yaml`, `components/harness-cursor/component.yaml` — each
+- **create** `components/harness-claude-code/component.yaml` (planned),
+  `components/harness-codex/component.yaml` (planned), `components/harness-cursor/component.yaml` (planned) — each
   `provides: [assay.harness]` with `flavour: <name>`, and `apply` steps that install that
   harness's delivery shape (plugin manifest and hook wiring; codex manifest; `harnessgen`
   output). Their reverses are inside-boundary (files) and trivial.
-- **edit** `plugins/assay/skills/*/component.yaml` and `plugins/assay/hooks/component.yaml` —
+- **edit** `plugins/assay/skills/*/component.yaml` and `plugins/assay/hooks/component.yaml` (planned) —
   `inject.required` gains `assay.harness`; hooks additionally require `flavour: claude-code`
   (the SessionStart/PreToolUse mechanism is Claude Code's).
 - **edit** `tools/desk/cmd/deskmanifest/` — `provides` entries MAY carry attributes
   (`flavour`); `inject` entries MAY constrain them (`flavour: claude-code`); exclusive keys
-  (declared in `components/KEYS.md` with `exclusive: true`) MUST have at most one ACTIVE
+  (declared in `components/KEYS.md` (planned) with `exclusive: true`) MUST have at most one ACTIVE
   provider — a second is a lint PROBLEM.
-- **edit** `components/KEYS.md` — `assay.harness` marked `exclusive: true`.
+- **edit** `components/KEYS.md` (planned) — `assay.harness` marked `exclusive: true`.
 - **edit** `docs/streams/harness-portability/README.md` — one paragraph pointing at the seam.
 
 facts:
@@ -79,7 +79,7 @@ facts:
 2. Add `assay.harness` to every skill's and the hooks' `inject.required`; add the `flavour`
    constraint on hooks.
 3. Extend `deskmanifest lint`: provider attributes, inject constraints, exclusive keys.
-4. Mark `assay.harness` exclusive in `components/KEYS.md`.
+4. Mark `assay.harness` exclusive in `components/KEYS.md` (planned).
 5. Add tests: two adapters present → lint PROBLEM; hooks with a codex adapter → INACTIVE report;
    one adapter → clean.
 

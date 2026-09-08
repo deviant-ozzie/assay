@@ -22,22 +22,22 @@ sources:
   - "composability/01, composability/02, composability/03, composability/04 — the shipped behaviour the spec describes"
 ---
 
-# Brief 05 — Promote the draft to `spec/component-v1.md` + adopter doc delta
+# Brief 05 — Promote the draft to `spec/component-v1.md` (planned) + adopter doc delta
 
 ## Context
 
 files:
-- **create** `spec/component-v1.md` — from `component-model.md`, restructured to the shape of
+- **create** `spec/component-v1.md` (planned) — from `component-model.md`, restructured to the shape of
   the three existing spec documents: version line, status line, "Describes reference
   implementation" line, scope, terminology, normative sections, conformance, known
   divergences.
 - **edit** `spec/README.md` — add the fourth row to the document table; bump the
   specification-as-a-whole version per its policy.
 - **edit** `docs/adopting-assay.md` — §2 Component inventory becomes a pointer to
-  `components/KEYS.md` and the manifests; §3 gains "Removing a component" (the `deskdisable`
+  `components/KEYS.md` (planned) and the manifests; §3 gains "Removing a component" (the `deskdisable`
   path, the ledger, what stays for a human); the install scenario steps cite the record.
 - **edit** `docs/streams/composability/component-model.md` — replace the body with a
-  two-line pointer to `spec/component-v1.md` (the stream keeps the provenance; the spec keeps
+  two-line pointer to `spec/component-v1.md` (planned) (the stream keeps the provenance; the spec keeps
   the text).
 - **edit** `docs/distribution.md` — link the record and the reconcile engine.
 
@@ -62,7 +62,7 @@ facts:
 
 ## Task
 
-1. Restructure the draft into `spec/component-v1.md` with the standard header lines and the
+1. Restructure the draft into `spec/component-v1.md` (planned) with the standard header lines and the
    existing documents' section order.
 2. Re-derive the known-divergences section from the merged tree after 01–04.
 3. Update `spec/README.md`'s table and version.

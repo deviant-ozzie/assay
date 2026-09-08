@@ -9,7 +9,7 @@ why: >-
   need it — and the lint makes an undeclared dependency a CI failure instead of an outage.
 wave: 0
 depends: []
-unblocks: ["composability/01", "composability/02", "composability/04"]
+unblocks: ["composability/01", "composability/02", "composability/03", "composability/04"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -20,7 +20,7 @@ sources:
   - "docs/streams/composability/component-model.md §2 (manifest shape), §3 (key catalogue), §6.1 (cycle rule)"
   - "arXiv 2608.25512 §3.2 reactive coeffects (a component declares required and provided keys), §6.5 (cycles are detectable from declarations alone), §6.6 (key namespacing against collision)"
   - "docs/adopting-assay.md §2 Component inventory — the prose list this brief makes machine-readable"
-  - "docs/roster-configuration.md — the ASSAY_* keys, split into fail-closed trust surfaces and adopter extensions with defaults"
+  - "docs/adopting-assay.md (roster section) — the ASSAY_* keys, split into fail-closed trust surfaces and adopter extensions with defaults"
   - "Ian's direction (2026-09-07): turn the paper's model into a stream; start with the blast-radius fix"
 ---
 
@@ -29,11 +29,11 @@ sources:
 ## Context
 
 files:
-- **create** `components/KEYS.md` — the authoritative key catalogue (the table in
+- **create** `components/KEYS.md` (planned) — the authoritative key catalogue (the table in
   `component-model.md` §3, kept here from now on; §3 links to it).
 - **create** one `component.yaml` per unit of the `docs/adopting-assay.md` §2 inventory:
   `plugins/assay/skills/<name>/component.yaml` for every skill directory,
-  `plugins/assay/hooks/component.yaml`, `tools/desk/component.yaml`, `statusgen/component.yaml`,
+  `plugins/assay/hooks/component.yaml` (planned), `tools/desk/component.yaml` (planned), `statusgen/component.yaml` (planned),
   and `components/<name>/component.yaml` for the forge-side / scaffold-side units with no source
   directory: `streams-scaffold`, `registers-scaffold`, `ci-statusgen`, `main-guard`, `labels`,
   `roster`, `reviewer-app`, `forge-github`.
@@ -43,7 +43,7 @@ files:
   output per `spec/brief-v1.md` §8.
 - **edit** the existing lint CI job so `deskmanifest lint` runs on every push.
 - **edit** `docs/streams/composability/component-model.md` §3 — replace the inline table with a
-  link to `components/KEYS.md` once the catalogue exists.
+  link to `components/KEYS.md` (planned) once the catalogue exists.
 
 facts:
 - **Manifests declare; they do not yet act.** This brief installs nothing and reverses nothing.
@@ -76,7 +76,7 @@ facts:
 
 ## Task
 
-1. Write `components/KEYS.md` from `component-model.md` §3, one row per key, with the providing
+1. Write `components/KEYS.md` (planned) from `component-model.md` §3, one row per key, with the providing
    component and a one-line meaning. Add the keys the inventory turns out to need that §3 missed;
    note each addition in the PR body.
 2. For each unit in the §2 inventory, write its `component.yaml` per `component-model.md` §2:
