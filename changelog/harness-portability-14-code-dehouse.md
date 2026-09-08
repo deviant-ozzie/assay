@@ -14,6 +14,6 @@
 - The four `ask-decision`/`install`/`pdfingest`/`upgrade-assay` degradation cells in
   `plugins/assay/references/{claude-code,codex,cursor}.md`, previously marked
   "proposed — pending the driver's ruling on #626", are now settled binding content: the
-  ruling landed (assay#626), recorded in a new design-decision record
+  ruling landed (#626), recorded in a new design-decision record
   (`docs/streams/decisions/DR-harness-code-dehouse.md`), and the stream README's row 14
   moves `blocked` → `implemented`.

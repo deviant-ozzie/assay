@@ -3,7 +3,7 @@ id: DR-harness-code-dehouse
 date: "2026-09-08"
 title: "Land harness-portability/14's code de-house (44 files, neutralised) as briefed"
 consequence: critical
-decided-by: "human:kryton"
+decided-by: "human:<name>"
 alternatives:
   - "Approve with changes — re-dispatch the brief with folded-in changes before it lands — ruled out: no changes were requested against the briefed neutralisation, staging (37 clean files first, then the 7 rewritten files), or defense-in-depth design; the ratifying comment approves it as written."
   - "Hold / reject — park the item at its human gate pending further review — ruled out: the ratifying comment is an affirmative approval (\"lgtm\"), not a hold, so the de-house is clear to land and the five held briefs (01/02/06/07/12) are clear to move toward their own public Evidence runs."
@@ -12,7 +12,7 @@ accepted:
   - "The reviewer's caveat — \"don't remember the cursor scratch repo, might need to re-run if you need it\" — is accepted as an open verification note, not a blocking condition: a later verifier re-running Verify rows 2a/3a (the canary scratch trees) may need to recreate that scratch state rather than assume one already exists."
 ---
 
-Ian (GitHub handle `kryton`) ratified harness-portability/14 — the code de-house that
+The driver (`human:<name>`) ratified harness-portability/14 — the code de-house that
 copies 44 files (three Go modules, the bundle's provenance/packaging files, two capability
 matrices, the smoke protocol) from the private source tree into this public tree — and,
 with it, the four desk-proposed harness-degradation cells in
@@ -21,7 +21,7 @@ with it, the four desk-proposed harness-degradation cells in
 on #626)" marker pending exactly this decision.
 
 The ruling was recorded as a comment on the brief's own decision-gate issue,
-[assay#626](https://github.com/medici-finance/assay/issues/626#issuecomment-5588628639):
+[issue #626](https://github.com/medici-finance/assay/issues/626#issuecomment-5588628639):
 
 > lgtm. don't remember the cursor scratch repo. might need to re-run if you need it
 
