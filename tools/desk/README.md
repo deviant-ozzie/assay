@@ -3902,6 +3902,31 @@ look identical from the inside, and collapsing them is how a broken collector re
 perfect day. The same rule applies to the trend block, whose "nothing to compare against"
 is `no-prior-data`, never a delta of `0` (which would read as *steady*).
 
+## Monitors — the paced pollers (`inbound-monitor.sh`, `pr-monitor.sh`)
+
+Two durable, stateful pollers ship in the plugin tree for a desk window to arm behind the
+harness `Monitor` tool: `inbound-monitor.sh` watches every repo's open issues and
+`pr-monitor.sh` watches every repo's open PRs (head sha, draft state, state, merge state).
+Both resolve the same repo set (args, `./.assay/repos.txt`, or the origin remote), keep a
+per-repo baseline so a repo's first sight SEEDS silently, poll as the keyring account (never an
+inherited App token that cannot see the private set), and RETAIN a repo's baseline on any read
+they cannot trust rather than go silently blind — a failed read, or a page that comes back at
+the explicit `--limit` (truncated: `gh` gives no truncation signal, so an at-limit read is a
+moving window, not ground truth). Neither script writes to the forge or holds a credential.
+
+**The pacing contract** is the same for both scripts, so a wide repo set cannot become the
+tight-loop poll that trips the forge's secondary rate limit:
+
+| Knob | Effect | Applies to |
+|---|---|---|
+| `ASSAY_MONITOR_PACE_SECONDS` | seconds slept between consecutive per-repo reads — default **2**; `0` disables the sleep (used by the test suites for speed). It is slept *between* reads only: never before the first read, and never around a repo that makes no call. | both scripts |
+| `ASSAY_MONITOR_MAX_REPOS_PER_CYCLE` | maximum repos a single cycle reads — default **0** = all. Above 0, the cycle reads that many repos and carries a cursor in the state dir so the next run resumes where this one stopped, sweeping a large set across cycles instead of in one burst. | `pr-monitor.sh` |
+| — (no knob; automatic) | a `gh` exit carrying the secondary-rate-limit signature (a 403 whose stderr names `secondary rate limit`, or a 429) marks every remaining repo `MONITOR-DEGRADED: <slug> rate-limited, skipped` and ends the cycle with no further `gh` call — one tripped limit is never compounded by the reads behind it. | both scripts |
+
+The pace and cap in force are echoed on the `MONITOR-ARMED` line so a transcript records what
+was set. Each script's `.test.sh` runs hermetically against a stubbed `gh` on `PATH`; no test
+touches the network.
+
 ## Handoff coverage
 
 Every point where one desk role hands work to another is a place two racers can both act. The
