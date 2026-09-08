@@ -11,21 +11,22 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Priority | Status | Briefs done | Last touched | Notes |
 |---|---|---|---|---|---|
-| [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 0/8 | 2026-09-07 |  |
-| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-07 |  |
-| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-09-07 |  |
-| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 4/9 | 2026-09-07 |  |
-| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 5/20 | 2026-09-07 |  |
-| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 1/8 | 2026-09-07 |  |
-| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 4/8 | 2026-09-07 |  |
-| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 0/12 | 2026-09-07 |  |
-| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 1/13 | 2026-09-07 |  |
-| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 2/6 | 2026-09-07 |  |
-| [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 6/6 | 2026-09-07 |  |
-| [quality](docs/streams/quality/README.md) | P2 | active | 15/16 | 2026-09-07 |  |
-| [spec-routing](docs/streams/spec-routing/README.md) | P2 | active | 1/1 | 2026-09-07 |  |
-| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 8/13 | 2026-09-07 |  |
-| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 2/6 | 2026-09-07 |  |
+| [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 0/8 | 2026-09-08 |  |
+| [composability](docs/streams/composability/README.md) | P2 | active | 0/6 | 2026-09-08 |  |
+| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-08 |  |
+| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-09-08 |  |
+| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 4/9 | 2026-09-08 |  |
+| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 5/20 | 2026-09-08 |  |
+| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 1/8 | 2026-09-08 |  |
+| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 4/8 | 2026-09-08 |  |
+| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 0/12 | 2026-09-08 |  |
+| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 1/13 | 2026-09-08 |  |
+| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 2/6 | 2026-09-08 |  |
+| [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 6/6 | 2026-09-08 |  |
+| [quality](docs/streams/quality/README.md) | P2 | active | 15/16 | 2026-09-08 |  |
+| [spec-routing](docs/streams/spec-routing/README.md) | P2 | active | 1/1 | 2026-09-08 |  |
+| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 8/13 | 2026-09-08 |  |
+| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 2/6 | 2026-09-08 |  |
 
 ## Next up
 
@@ -33,8 +34,7 @@ _Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: desk-tools. By 
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
-| desk-tools | 13 — `pr-monitor.sh` — a paced, per-repo head-sha / draft-state PR monitor shipped in the plugin tree | 1 | 1000 |
-| desk-tools | 15 — `deskdispatch --dry-run --worktree <path>` — render the prompt against an operator-supplied home | 1 | 1000 |
+| composability | 00 — Component manifests, key catalogue, and the resolve/cycle lint | 0 | 3500 |
 | desk-tools | 17 — One trust bar for public-repo authors — `deskboard` classifies on the same predicate `deskpost` gates on [exec:strong] | 1 | 1000 |
 | desk-tools | 18 — Public-repo write gate — an allowed-repos entry tagged `:public` authorizes outward writes, replacing the per-item `+1` reaction check [exec:strong] | 1 | 1000 |
 
@@ -150,6 +150,15 @@ _None._
 - 06 Avatar step in the run board — generated PNG beside the settings page, confirmed not uploaded — todo (wave 3)
 - 07 Install skill + adoption runbook cutover — `deskapps` replaces the hand runbook, tiers documented — todo (wave 4)
 - 08 Solo identity mode — spec + decision: the desk verbs on the operator's own token — implemented (wave 0)
+
+### composability (6 open)
+
+- 00 Component manifests, key catalogue, and the resolve/cycle lint — todo (wave 0)
+- 01 Reactive activation — a missing extension key downs one component, not the fleet — todo (wave 1)
+- 02 Install ledger, paired inverses, and the `disable` verb — todo (wave 1)
+- 03 Desired-state record and the reconcile engine behind deskmigrate / upgrade-assay — todo (wave 2)
+- 04 Harness as an exclusively-bound key — adapters as components — todo (wave 1)
+- 05 Promote the draft to spec/component-v1.md + adopter doc delta — todo (wave 3)
 
 ### derived-board (4 open)
 
@@ -363,4 +372,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**15** streams (**15** active, **0** paused) · **52/140** briefs done · completed initiatives: see `docs/archive/`
+**16** streams (**16** active, **0** paused) · **52/146** briefs done · completed initiatives: see `docs/archive/`
