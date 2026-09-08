@@ -822,11 +822,29 @@ func checkGitHubCommitIdentity(p PreflightProbes, ident BotIdentity, role, email
 		"git -C "+orDot(dir)+" config user.email "+want, refs)
 }
 
-// checkGitLabCommitIdentity validates a GitLab service-account commit address by SHAPE.
-// The group id and per-account suffix are not in the roster, so the shape is the tightest
-// available check — but a GitHub noreply address for a GitLab entry is a hard failure
-// (the cross-forge case), never a fall-through that a skipped check would let pass.
+// checkGitLabCommitIdentity validates a GitLab worktree's commit author. On GitLab the
+// desk runs TWO distinct identities (#643): the SESSION / implementer identity (a real
+// GitLab user, e.g. `ih-bot`) authors the commits under an ordinary user address, while
+// the role SERVICE ACCOUNT — the analog of the GitHub role App — is used only for minted
+// API writes. So this check accepts EITHER:
+//
+//   - a commit email that is an EXPLICITLY TRUSTED session address
+//     (ASSAY_GITLAB_SESSION_EMAILS — the two-identity path), or
+//   - the role service-account noreply SHAPE (the commit-as-SA path). The group id and
+//     per-account suffix are not in the roster, so the shape is the tightest available
+//     check for that form.
+//
+// A GitHub noreply address for a GitLab entry is a hard failure (the cross-forge case),
+// never a fall-through that a skipped check would let pass; and an email that is neither
+// a trusted session address nor the service-account shape still FAILS. The session
+// allowlist is the ONLY widening here, it is EXACT-MATCH from the trusted roster, and it
+// is never consulted on a GitHub identity (the #638 bot-USER-id guarantee is untouched).
 func checkGitLabCommitIdentity(ident BotIdentity, email, dir, refs string) Check {
+	if GitLabSessionEmailAllowed(email) {
+		return clean(CheckCommitIdentity, "commit email "+email+" is an explicitly trusted GitLab session / "+
+			"implementer address ("+EnvGitLabSessionEmails+"); the role service account ("+ident.Slug+
+			") is the API-write identity, not the commit author", refs)
+	}
 	if ident.CommitEmailSpec().Accepts(email) {
 		return clean(CheckCommitIdentity, "commit email is the GitLab service-account noreply form ("+email+
 			"); the group id and per-account suffix are not derivable from the roster, so the shape is the "+
@@ -839,7 +857,8 @@ func checkGitLabCommitIdentity(ident BotIdentity, email, dir, refs string) Check
 			commitIdentityRemedy(ident, dir), refs)
 	}
 	return failed(CheckCommitIdentity,
-		"commit email "+email+" is not the GitLab service-account noreply form "+
+		"commit email "+email+" is neither an explicitly trusted GitLab session / implementer address "+
+			"("+EnvGitLabSessionEmails+") nor the role service-account noreply form "+
 			"(service_account_group_<group-id>_<suffix>@noreply.<host>)",
 		commitIdentityRemedy(ident, dir), refs)
 }
@@ -853,8 +872,10 @@ func commitIdentityRemedy(ident BotIdentity, dir string) string {
 		return "git -C " + orDot(dir) + " config user.email " + spec.Exact
 	}
 	if spec.Forge == ForgeGitLab {
-		return "set this worktree's user.email to the " + ident.Slug + " GitLab service-account noreply " +
-			"address (service_account_group_<group-id>_<suffix>@noreply.<host>) provisioned for it"
+		return "commit as the session / implementer identity — set this worktree's user.email to a GitLab " +
+			"user address listed in " + EnvGitLabSessionEmails + " — OR, to commit AS the service account, " +
+			"set it to the " + ident.Slug + " GitLab service-account noreply address " +
+			"(service_account_group_<group-id>_<suffix>@noreply.<host>) provisioned for it"
 	}
 	return "pin the bot USER id in " + EnvTrustedBotSlugs + " for " + ident.Slug +
 		", then set this worktree's user.email to the resulting noreply address"
