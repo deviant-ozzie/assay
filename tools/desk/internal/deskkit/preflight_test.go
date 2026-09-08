@@ -218,6 +218,34 @@ func TestPreflightColdMintScrubbedEnvIsAllowlist(t *testing.T) {
 	}
 }
 
+// TestPreflightColdMintScrubbedEnvKeepsPlatformHome — the child mint resolves the
+// roster through os.UserHomeDir(), which reads a DIFFERENT env var per platform:
+// HOME on unix, %USERPROFILE% on Windows. A scrub that dropped the platform's home
+// variable left the Windows child with no home, os.UserHomeDir() failed
+// ("%userprofile% is not defined"), the roster read as absent, and the cold mint
+// refused on an envelope that was actually intact (#642). The allowlist must carry
+// every platform's home-defining variable so the child reconstructs the SAME home
+// the parent resolved, whatever OS it runs on. Asserted as a pure allowlist test so
+// it fails deterministically on every platform, not only Windows.
+func TestPreflightColdMintScrubbedEnvKeepsPlatformHome(t *testing.T) {
+	for _, k := range []string{"USERPROFILE", "HOMEDRIVE", "HOMEPATH"} {
+		t.Setenv(k, `C:\Users\desk`)
+	}
+	t.Setenv("HOME", "/home/desk")
+	joined := strings.Join(scrubbedEnv(), "\n")
+	for _, want := range []string{
+		"HOME=/home/desk",
+		`USERPROFILE=C:\Users\desk`, // Windows os.UserHomeDir() reads this one
+		`HOMEDRIVE=C:\Users\desk`,   // git-for-Windows composes a home from HOMEDRIVE+HOMEPATH
+		`HOMEPATH=C:\Users\desk`,
+	} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("the cold probe drops %q — a Windows child cannot resolve os.UserHomeDir(), "+
+				"so it reports the roster absent on an intact envelope (#642)", want)
+		}
+	}
+}
+
 // TestPreflightRepoSlugFromEveryRemoteForm — the cold mint is against an
 // INSTALLATION, so the probe must resolve the same owner the pass lands on. The
 // ssh HOST-ALIAS form (`host-alias:owner/repo.git`) is the one a naive parser
