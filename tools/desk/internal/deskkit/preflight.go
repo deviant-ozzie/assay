@@ -407,8 +407,8 @@ func checkColdMint(p PreflightProbes, role, repo string) (string, Check) {
 // carry <ROLE>_TOKEN / <ROLE>_PEM / <ROLE>_APP_ID / GH_TOKEN forward and the
 // probe would pass on an ambient credential that a fresh shell will not have —
 // which is precisely the failure #794 describes: everything works until the warm
-// cache lapses. Only HOME, PATH, the config-home knob, the proxy/TLS variables
-// the network call needs, and TMPDIR survive.
+// cache lapses. Only the home-defining variables, PATH, the config-home knob,
+// the proxy/TLS variables the network call needs, and TMPDIR survive.
 //
 // The probe MINTS (it does not use --ttl): --ttl fails on a cold machine that
 // has no cache yet, which is the normal state at boot, so it would report red
@@ -468,8 +468,23 @@ func deriveRepoSlug(dir, remote string) string {
 // scrubbedEnv is the ALLOWLIST a cold probe runs under. An allowlist, not a
 // denylist: a new credential env var added elsewhere must not silently start
 // warming this probe.
+//
+// The home-defining variables are load-bearing, not incidental. The child mint
+// resolves the roster and the App-credential home through os.UserHomeDir()
+// (rosterconfig.go's configHomeFile, appconfig.go's expandHome), and
+// os.UserHomeDir() reads a DIFFERENT variable per platform: HOME on unix/plan9,
+// %USERPROFILE% on Windows. An allowlist that carried only HOME therefore left
+// the Windows child with no home at all — os.UserHomeDir() failed with
+// "%userprofile% is not defined", the roster read as absent, and the cold mint
+// refused on an envelope that was actually intact (#642). Keeping every
+// platform's home variable — plus HOMEDRIVE/HOMEPATH, the pair git-for-Windows
+// composes a home from — lets the child reconstruct the SAME home the parent
+// resolved, on any OS, without dragging a credential across. On unix the Windows
+// names are simply unset and skipped, so this is not a widening of what a unix
+// child inherits.
 func scrubbedEnv() []string {
-	keep := []string{"HOME", "PATH", EnvConfigHome, "TMPDIR",
+	keep := []string{"HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH",
+		"PATH", EnvConfigHome, "TMPDIR",
 		"HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "no_proxy",
 		"SSL_CERT_FILE", "SSL_CERT_DIR"}
 	var env []string
