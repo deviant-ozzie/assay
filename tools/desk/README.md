@@ -3496,6 +3496,23 @@ claimed. A mistyped flag must cost a refusal, not an item nobody can pick up unt
 deletes a ref by hand. `TestNoCallerPreconditionIsCheckedAfterTheClaim` drives the whole
 table of bad inputs and asserts that *zero* processes ran.
 
+**`--dry-run --worktree PATH` renders against an operator-stated home, verified — never
+predicted.** A dry run normally shows the agent's home worktree as a not-yet-known
+placeholder, on purpose: the worktree verb owns where a worktree lands, and a predicted path
+in a prompt would be a second source of truth for the one value the isolation floor rests on.
+But a dry run is also how a batch of prompts is previewed, and each preview then has that
+placeholder substituted by hand before it reaches an agent. `--worktree` (accepted **only**
+with `--dry-run`; refused with exit 5 on a real dispatch, where the home is the worktree
+verb's to name) lets the verb render an operator-stated home that *already exists* — but only
+after proving it, three checks all fail-closed with exit 5 and their own reason: the path
+resolves under a sanctioned worktree prefix (the same two-line rule the worktree verb
+enforces, no looser), it IS a registered git worktree of the item's *own* repo (both
+`rev-parse --show-toplevel` equal to the path and its git-common-dir equal to the item
+repo's — so a typo, a plain directory, or a clone of another repo is refused), and it is not
+the shared checkout (refused by identity first, the isolation floor). A verified path is
+substituted at *both* placeholder sites and echoed on the PLAN banner as `worktree=<path>
+(operator-supplied, verified)`, so a transcript shows it was checked, not guessed.
+
 **`deskflip` re-reads the verdicts, not just the head, before it mutates.** A head re-read
 catches a push. It does not catch a `Security-Review: fail`, because a retraction is a
 review event posted at the *same* head — so a head-only re-read reports "still current" and
